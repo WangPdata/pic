@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>淘宝图搜结果分析（离线版）</title>
+<style>
+:root{--bg:#0f1419;--panel:#1a1f2e;--panel2:#232938;--border:#2d3548;--text:#e4e6eb;--dim:#8b93a7;--accent:#4dd0e1;--green:#66bb6a;--orange:#ffa726;--red:#ef5350;--blue:#42a5f5;--purple:#ab47bc}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+.header{background:linear-gradient(135deg,#1a1f2e,#232938);padding:14px 20px;border-bottom:1px solid var(--border)}
+.header h1{font-size:18px;font-weight:600}.header h1 span{color:var(--accent)}
+.header p{color:var(--dim);font-size:12px;margin-top:2px}
+.dropzone{margin:20px auto;max-width:560px;border:2px dashed var(--border);border-radius:12px;padding:40px;text-align:center;cursor:pointer;background:var(--panel);transition:.2s}
+.dropzone:hover,.dropzone.over{border-color:var(--accent);background:var(--panel2)}
+.dropzone .ico{font-size:36px;margin-bottom:8px}
+.dropzone p{color:var(--dim)}.dropzone b{color:var(--text)}
+.container{max-width:1200px;margin:0 auto;padding:0 20px 40px}
+.kw-bar{display:flex;gap:8px;align-items:center;margin:16px 0;flex-wrap:wrap}
+.kw-bar input{flex:1;min-width:200px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px 12px;font-size:13px}
+.kw-bar input:focus{outline:none;border-color:var(--accent)}
+.kw-bar .btn{padding:8px 14px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;color:var(--text);cursor:pointer;font-size:13px}
+.kw-bar .btn:hover{border-color:var(--accent)}
+.metrics-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:16px}
+.metric{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:12px}
+.metric .label{font-size:11px;color:var(--dim);margin-bottom:4px}
+.metric .value{font-size:22px;font-weight:700}
+.metric .sub{font-size:11px;color:var(--dim);margin-top:2px}
+.metric.accent .value{color:var(--accent)}.metric.green .value{color:var(--green)}.metric.orange .value{color:var(--orange)}.metric.blue .value{color:var(--blue)}.metric.purple .value{color:var(--purple)}
+.chart-card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px}
+.chart-card h3{font-size:13px;font-weight:600;margin-bottom:12px}
+.bar-row{display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:12px}
+.bar-label{width:70px;text-align:right;color:var(--dim);flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar-wrap{flex:1;background:var(--panel2);border-radius:3px;height:18px;overflow:hidden}
+.bar-fill{height:100%;border-radius:3px;display:flex;align-items:center;justify-content:flex-end;padding-right:5px;font-size:10px;color:#000;min-width:20px}
+.cols-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+table{width:100%;border-collapse:collapse;font-size:12px;background:var(--panel);border-radius:8px;overflow:hidden}
+th,td{padding:7px 9px;text-align:left;border-bottom:1px solid var(--border)}
+th{background:var(--panel2);color:var(--dim);font-weight:600;position:sticky;top:0}
+td.num{text-align:right;font-variant-numeric:tabular-nums}
+tr:hover{background:var(--panel2)}
+.tag{display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;background:var(--panel2);color:var(--dim)}
+.tag.hit{background:rgba(102,187,106,.2);color:var(--green)}
+.tag.miss{background:rgba(239,83,80,.15);color:var(--red)}
+.tag.yes{background:rgba(102,187,106,.2);color:var(--green);cursor:pointer}
+.tag.no{background:rgba(239,83,80,.15);color:var(--red);cursor:pointer}
+.tag.none{background:var(--panel2);color:var(--dim);cursor:pointer}
+.empty{text-align:center;color:var(--dim);padding:40px}
+.mark-btns span{padding:1px 5px;border-radius:3px;cursor:pointer;font-size:11px}
+.tabs{display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap}
+.tab{padding:5px 12px;background:var(--panel2);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:12px}
+.tab.active{background:var(--accent);color:#000;border-color:var(--accent)}
+.pill{display:inline-block;background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:1px 8px;font-size:11px;margin:2px;color:var(--accent)}
+.file-name{color:var(--accent);font-size:12px;margin-bottom:8px}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>淘宝图搜结果 <span>离线分析</span></h1>
+  <p>无需服务器，双击即用。把 run.mjs 生成的 <b>taobao-image-search-latest-response.json</b> 拖进来即可看全部指标。</p>
+</div>
+
+<div class="dropzone" id="dropzone">
+  <div class="ico">📄</div>
+  <p>拖入 <b>response.json</b> 文件，或<b>点击选择</b></p>
+  <input type="file" id="fileInput" accept=".json,application/json" class="hidden">
+</div>
+
+<div class="container hidden" id="mainArea">
+  <div class="file-name" id="fileName"></div>
+  <div class="kw-bar">
+    <input type="text" id="keywords" placeholder="期望关键词（逗号分隔，如：美式,字母,印花,短袖）— 用于计算准确率">
+    <button class="btn" onclick="recompute()">应用关键词</button>
+    <button class="btn" onclick="document.getElementById('fileInput').click()">换一个文件</button>
+  </div>
+  <div id="resultsArea"></div>
+</div>
+
+<script>
+let currentJson = null;
+let currentFileName = '';
+const manualMarks = {};
+
+// ===== 来自 lib.mjs 的纯函数（浏览器版，无 Node 依赖）=====
+function parsePrice(v){const n=parseFloat(String(v??'').replace(/,/g,''));return isFinite(n)?n:null}
+function round2(v){return Math.round(v*100)/100}
+function normalizeTaobaoUrl(v){if(!v)return'';if(v.startsWith('//'))return'https:'+v;if(/^https?:\/\//i.test(v))return v;if(v.startsWith('/'))return'https://s.taobao.com'+v;return v}
+
+function normalizeItem(item,index){
+  const props=Object.fromEntries((Array.isArray(item.structuredUSPInfo)?item.structuredUSPInfo:[]).filter(p=>p?.propertyName).map(p=>[p.propertyName,p.propertyValueName]));
+  const title=String(item.title??'');
+  const price=parsePrice(item.priceShow?.price??item.price);
+  const icons=(Array.isArray(item.icons)?item.icons:[]).map(ic=>ic.text?.trim()||(['tmall','tmallPC'].includes(ic.alias)?'天猫':'')).filter(Boolean);
+  const reasonParts=[];
+  if(/电池|表带|贴膜|配件|挂绳|保护套|奖牌|支架|眼罩|纸巾|杯/.test(title))reasonParts.push('疑似配件或非同款');
+  if(/儿童|小孩|卡通|宝宝|玩具|发光|音乐|手串|亚克力|装饰/.test(title))reasonParts.push('标题命中图中卡通/装饰属性');
+  if(isFinite(price)&&price<20)reasonParts.push('价格明显低，需核验是否同款');
+  if(isFinite(price)&&price>=500)reasonParts.push('价格明显高，可能是品牌款或不相关');
+  if(icons.includes('退货宝'))reasonParts.push('有退货保障');
+  if(icons.includes('包邮'))reasonParts.push('包邮');
+  return{rank:index+1,id:item.item_id,title,price,sales:item.realSales??'',shop:item.shopInfo?.title??item.nick??'',shopTag:item.shopTag??'',location:item.procity??'',brand:props.品牌??'',icons,reason:reasonParts.join('；'),bucket:bucketForItem({title,price,index,sales:item.realSales??'',reasonParts}),itemUrl:normalizeTaobaoUrl(item.auctionURL??''),shopUrl:normalizeTaobaoUrl(item.shopInfo?.url??''),imageUrl:normalizeTaobaoUrl(item.pic_path??'')};
+}
+function bucketForItem({title,price,index,sales,reasonParts}){
+  if(reasonParts.some(r=>r.includes('低'))||(isFinite(price)&&price<20))return'低价风险';
+  if(isFinite(price)&&price>=500)return'高价参考';
+  if(index<3||/原创|同款|笑脸|苹果|亚克力|装饰/.test(title))return'优先比价';
+  if(/儿童|卡通|玩具/.test(title))return'近似玩具款';
+  if(/\d+\+人付款|[1-9]\d{2,}人付款/.test(sales))return'销量参考';
+  return'备选';
+}
+function priorityScore(item){let s=0;if(/原创|笑脸|苹果|亚克力|装饰|手串表|手表手环/.test(item.title))s+=30;if(isFinite(item.price)&&item.price>=20&&item.price<=120)s+=20;if(/100\+|[2-9]\d{2,}\+?|[1-9]\d{3,}\+?/.test(item.sales))s+=12;if(/包邮|退货宝/.test(item.icons.join(',')))s+=5;if(item.rank<=10)s+=10-item.rank;if(/配件|奖牌|支架|眼罩|纸巾|杯/.test(item.reason))s-=30;if(isFinite(item.price)&&item.price>=500)s-=20;return s}
+function pickPriorityItems(rows){return[...rows].filter(i=>!(isFinite(i.price)&&i.price<20)).sort((a,b)=>priorityScore(b)-priorityScore(a)||a.price-b.price||a.rank-b.rank).slice(0,10)}
+
+function diagnoseResponse(j){
+  const ret=Array.isArray(j?.ret)?j.ret.join(' | '):String(j?.ret??'');
+  const url=String(j?.data?.url??'');
+  const text=`${ret} ${url}`;
+  if(/RGV587|punish|deny|bixi|验证码|验证|风控|FAIL_SYS_TOKEN|TOKEN_EXPIRED|TOKEN_EXOIRED/i.test(text))return{status:'blocked',reason:`淘宝风控或登录态拦截：${ret||url}`};
+  if(/SUCCESS/.test(ret))return{status:'success',reason:ret};
+  return{status:'error',reason:ret||'接口没有返回 SUCCESS'};
+}
+function summarize(j){
+  const diag=diagnoseResponse(j);
+  const data=j?.data??{};
+  const items=Array.isArray(data.itemsArray)?data.itemsArray:[];
+  const rows=items.map(normalizeItem);
+  return{status:diag.status,reason:diag.reason,itemCount:items.length,costMs:typeof data._cost==='number'?data._cost:null,rows};
+}
+function priceStats(prices){
+  const sorted=[...prices].sort((a,b)=>a-b);const n=sorted.length;
+  if(!n)return{count:0,min:null,max:null,median:null,average:null,std:null,cv:null,p25:null,p75:null,mainRange:null};
+  const sum=sorted.reduce((a,b)=>a+b,0);const avg=sum/n;
+  const variance=sorted.reduce((a,b)=>a+(b-avg)**2,0)/n;const std=Math.sqrt(variance);
+  const pct=(p)=>sorted[Math.min(n-1,Math.floor(p/100*n))];
+  const median=n%2?sorted[(n-1)/2]:(sorted[n/2-1]+sorted[n/2])/2;
+  return{count:n,min:round2(sorted[0]),max:round2(sorted.at(-1)),median:round2(median),average:round2(avg),std:round2(std),cv:avg?round2((std/avg)*100):null,p25:round2(pct(25)),p75:round2(pct(75)),mainRange:'¥'+round2(pct(25))+'-¥'+round2(pct(75))};
+}
+function priceBands(prices){const b={'<20':0,'20-49':0,'50-99':0,'100-199':0,'200-499':0,'500-999':0,'1000+':0};for(const p of prices){if(p<20)b['<20']++;else if(p<50)b['20-49']++;else if(p<100)b['50-99']++;else if(p<200)b['100-199']++;else if(p<500)b['200-499']++;else if(p<1000)b['500-999']++;else b['1000+']++}return b}
+function topKeywords(rows,limit=15){const stop=new Set('的了和与及或就也都还又才再是被在到把给对从向往对于这那之等等我你他她它们个为以而但且如然则');const f=new Map();for(const r of rows){const t=r.title||'';const segs=t.match(/[\u4e00-\u9fa5]{2,}/g)||[];for(const seg of segs)for(let i=0;i+1<seg.length;i++){const p=seg.slice(i,i+2);if(stop.has(p[0])||stop.has(p[1]))continue;f.set(p,(f.get(p)||0)+1)}}return[...f.entries()].sort((a,b)=>b[1]-a[1]).slice(0,limit).map(([w,c])=>({word:w,count:c}))}
+function keywordHit(rows,kw){const ks=String(kw||'').split(/[,，\s]+/).map(s=>s.trim()).filter(Boolean);if(!ks.length)return{enabled:false,overall:null,top5:null,top10:null,matched:0,total:rows.length,keywords:[]};const hit=t=>ks.some(k=>t.includes(k));const matched=rows.filter(r=>hit(r.title||'')).length;const t5=rows.slice(0,5),t10=rows.slice(0,10);return{enabled:true,keywords:ks,total:rows.length,matched,overall:rows.length?round2(matched/rows.length*100):0,top5:t5.length?round2(t5.filter(r=>hit(r.title||'')).length/t5.length*100):0,top10:t10.length?round2(t10.filter(r=>hit(r.title||'')).length/t10.length*100):0}}
+
+function computeMetrics(j,kw){
+  const s=summarize(j);const rows=s.rows;const prices=rows.map(r=>r.price).filter(p=>isFinite(p));const ps=priceStats(prices);
+  const freeShip=rows.filter(r=>(r.icons||[]).some(i=>/包邮/.test(i))).length;
+  const ret=rows.filter(r=>(r.icons||[]).some(i=>/退货/.test(i))).length;
+  const hasSales=rows.filter(r=>r.sales&&!/^0人付款/.test(r.sales)).length;
+  const top5p=rows.slice(0,5).map(r=>r.price).filter(p=>isFinite(p));
+  const sc=new Map();for(const r of rows)sc.set(r.shop,(sc.get(r.shop)||0)+1);
+  const dup=[...sc.entries()].filter(([,c])=>c>1).sort((a,b)=>b[1]-a[1]);
+  const loc=new Map();for(const r of rows){if(r.location)loc.set(r.location,(loc.get(r.location)||0)+1)}
+  const locs=[...loc.entries()].sort((a,b)=>b[1]-a[1]).slice(0,8).map(([v,c])=>({value:v,count:c}));
+  return{status:s.status,reason:s.reason,itemCount:s.itemCount,costMs:s.costMs,price:ps,freeShippingRate:rows.length?round2(freeShip/rows.length*100):0,returnGuardRate:rows.length?round2(ret/rows.length*100):0,hasSalesRate:rows.length?round2(hasSales/rows.length*100):0,top5PriceCv:priceStats(top5p).cv,priceBands:priceBands(prices),keywords:keywordHit(rows,kw),topKeywords:topKeywords(rows),dupShops:dup.slice(0,8).map(([shop,count])=>({shop,count})),locations:locs,priorityItems:pickPriorityItems(rows),rows};
+}
+
+// ===== 渲染 =====
+function esc(s){return String(s??'').replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))}
+function metric(l,v,s,c){return`<div class="metric ${c||''}"><div class="label">${l}</div><div class="value">${v}</div><div class="sub">${s||''}</div></div>`}
+function barChart(items){if(!items||!items.length)return'<div class="empty">无数据</div>';const max=Math.max(...items.map(i=>i.value));const cs=['var(--accent)','var(--blue)','var(--green)','var(--purple)','var(--orange)'];return items.map((it,i)=>{const pct=max?(it.value/max*100):0;return`<div class="bar-row"><span class="bar-label" title="${esc(it.label)}">${esc(it.label)}</span><div class="bar-wrap"><div class="bar-fill" style="width:${pct}%;background:${cs[i%cs.length]}">${it.value}</div></div></div>`}).join('')}
+function priceBandsArr(b){if(!b)return[];return[{label:'<20',value:b['<20']||0},{label:'20-49',value:b['20-49']||0},{label:'50-99',value:b['50-99']||0},{label:'100-199',value:b['100-199']||0},{label:'200-499',value:b['200-499']||0},{label:'500+',value:(b['500-999']||0)+(b['1000+']||0)}]}
+
+function render(m,kw){
+  manualMarks.value={};
+  const k=m.keywords;
+  let h='<div class="metrics-grid">';
+  h+=metric('调用状态',m.status==='success'?'成功':(m.status==='blocked'?'风控':'异常'),m.reason,m.status==='success'?'green':(m.status==='blocked'?'orange':'accent'));
+  h+=metric('返回商品数',m.itemCount,'有效价格'+m.price.count+'条','accent');
+  h+=metric('价格中位数',m.price.median!=null?('¥'+m.price.median):'—','均值¥'+(m.price.average||'—'),'blue');
+  h+=metric('价格区间',m.price.min!=null?('¥'+m.price.min+' ~ ¥'+m.price.max):'—','主流'+(m.price.mainRange||'—'),'purple');
+  h+=metric('价格变异系数',m.price.cv!=null?(m.price.cv+'%'):'—','越低=越收敛=越像同款',m.price.cv!=null&&m.price.cv<40?'green':(m.price.cv!=null&&m.price.cv<80?'orange':'accent'));
+  h+=metric('Top5价格CV',m.top5PriceCv!=null?(m.top5PriceCv+'%'):'—','排名前5一致性',m.top5PriceCv!=null&&m.top5PriceCv<30?'green':'orange');
+  h+=metric('包邮率',m.freeShippingRate+'%','—','green');
+  h+=metric('退货保障率',m.returnGuardRate+'%','退货宝/退货保障','blue');
+  h+=metric('有销量率',m.hasSalesRate+'%','非0人付款占比','purple');
+  if(k.enabled){h+=metric('关键词命中率',k.overall+'%',k.matched+'/'+k.total+'命中','accent');h+=metric('Top5精确率',k.top5+'%','前5条命中','green');h+=metric('Top10精确率',k.top10+'%','前10条命中','green')}
+  else h+=metric('准确率','—','填关键词后计算','orange');
+  h+='</div>';
+  if(k.enabled){h+='<div style="margin-bottom:14px"><span style="color:var(--dim);font-size:12px">期望关键词：</span>';k.keywords.forEach(x=>h+=`<span class="pill">${esc(x)}</span>`);h+='</div>'}
+  h+='<div class="cols-2">';
+  h+=`<div class="chart-card"><h3>价格分布（按区间）</h3>${barChart(priceBandsArr(m.priceBands))}</div>`;
+  h+=`<div class="chart-card"><h3>标题高频词 Top10</h3>${barChart(m.topKeywords.slice(0,10).map(x=>({label:x.word,value:x.count})))}</div>`;
+  h+='</div>';
+  h+='<div class="cols-2">';
+  h+=`<div class="chart-card"><h3>发货地分布</h3>${barChart(m.locations.map(l=>({label:l.value,value:l.count})))}</div>`;
+  h+=`<div class="chart-card"><h3>重复铺货店铺</h3>${m.dupShops.length?barChart(m.dupShops.map(s=>({label:s.shop,value:s.count})):'<div class="empty">无重复店铺</div>'}</div>`;
+  h+='</div>';
+  h+='<div class="chart-card" style="margin-top:16px"><h3>优先推荐（工具内判断）</h3>';
+  if(m.priorityItems.length){h+='<table><thead><tr><th>判断</th><th>商品</th><th class="num">价格</th><th>店铺/销量</th><th>理由</th></tr></thead><tbody>';
+  m.priorityItems.slice(0,8).forEach(it=>{h+=`<tr><td><span class="tag">${esc(it.bucket)}</span></td><td>${esc(it.title)}</td><td class="num">¥${it.price}</td><td>${esc(it.shop)}<br><span style="color:var(--dim);font-size:11px">${esc(it.sales)}</span></td><td style="color:var(--dim)">${esc(it.reason)}</td></tr>`});
+  h+='</tbody></table>'}else h+='<div class="empty">无</div>';
+  h+='</div>';
+  h+='<div class="chart-card" style="margin-top:16px">';
+  h+=`<h3>全量商品 ${m.rows.length} 条 ${k.enabled?'（点同/异标注，实时算人工精确率）':''}</h3>`;
+  h+=`<div class="tabs" id="filterTabs"><span class="tab active" onclick="filterRows(this,'all')">全部</span><span class="tab" onclick="filterRows(this,'hit')">命中关键词</span><span class="tab" onclick="filterRows(this,'yes')">我标为同款</span><span class="tab" onclick="filterRows(this,'no')">我标为不同</span></div>`;
+  if(k.enabled)h+='<div id="manualStats" style="margin-bottom:10px;font-size:13px;color:var(--dim)"></div>';
+  h+=`<table id="itemsTable"><thead><tr><th>#</th><th>商品</th><th class="num">价格</th><th>店铺</th><th>销量</th><th>发货地</th><th>标签</th>${k.enabled?'<th>关键词</th><th>我的标注</th>':''}</tr></thead><tbody>`;
+  m.rows.forEach((it,i)=>{const hit=k.enabled&&k.keywords.some(x=>(it.title||'').includes(x));h+=`<tr data-idx="${i}" data-hit="${hit?'1':'0'}" data-manual=""><td class="num">${it.rank}</td><td><a href="${it.itemUrl}" target="_blank" style="color:var(--text);text-decoration:none">${esc(it.title)}</a></td><td class="num">${it.price!=null?'¥'+it.price:'—'}</td><td>${esc(it.shop)}</td><td>${esc(it.sales)}</td><td>${esc(it.location)}</td><td>${(it.icons||[]).map(ic=>`<span class="tag">${esc(ic)}</span>`).join(' ')}</td>`;if(k.enabled){h+=`<td><span class="tag ${hit?'hit':'miss'}">${hit?'命中':'未中'}</span></td><td><div class="mark-btns"><span class="tag none" onclick="setManual(${i},'yes',event)">同</span><span class="tag none" onclick="setManual(${i},'no',event)">异</span></div></td>`}h+='</tr>'});
+  h+='</tbody></table></div>';
+  document.getElementById('resultsArea').innerHTML=h;
+  manualMarks.value={};updateManualStats();
+}
+function setManual(idx,val,e){e.stopPropagation();const row=document.querySelector(`tr[data-idx="${idx}"]`);if(!row)return;const cur=row.dataset.manual;const next=cur===val?'':val;row.dataset.manual=next;manualMarks.value[idx]=next;const b=row.querySelectorAll('.mark-btns span');b[0].className='tag '+(next==='yes'?'yes':'none');b[1].className='tag '+(next==='no'?'no':'none');updateManualStats();syncFilters()}
+function updateManualStats(){const el=document.getElementById('manualStats');if(!el)return;const m=manualMarks.value;const yes=Object.values(m).filter(v=>v==='yes').length;const no=Object.values(m).filter(v=>v==='no').length;const t=yes+no;const prec=t?(yes/t*100).toFixed(1):'0.0';el.innerHTML=`人工标注：同款 ${yes} / 不同 ${no} / 共标 ${t} → <b style="color:var(--green)">人工精确率 ${prec}%</b>`}
+function filterRows(tab,mode){document.querySelectorAll('#filterTabs .tab').forEach(t=>t.classList.remove('active'));tab.classList.add('active');syncFilters(mode)}
+function syncFilters(mode){const active=mode||(document.querySelector('#filterTabs .tab.active')?.textContent||'全部');document.querySelectorAll('#itemsTable tbody tr').forEach(tr=>{const hit=tr.dataset.hit==='1';const m=tr.dataset.manual;let show=true;if(active==='命中关键词')show=hit;else if(active==='我标为同款')show=m==='yes';else if(active==='我标为不同')show=m==='no';tr.style.display=show?'':'none'})}
+function recompute(){if(!currentJson)return;const kw=document.getElementById('keywords').value;const m=computeMetrics(currentJson,kw);render(m,kw)}
+
+// ===== 文件加载 =====
+function loadFile(file){currentFileName=file.name;document.getElementById('fileName').textContent='📄 '+file.name;const r=new FileReader();r.onload=e=>{try{currentJson=JSON.parse(e.target.result);document.getElementById('mainArea').classList.remove('hidden');recompute();document.getElementById('dropzone').classList.add('hidden')}catch(err){alert('JSON 解析失败: '+err.message)}};r.readAsText(file)}
+const dz=document.getElementById('dropzone'),fi=document.getElementById('fileInput');
+dz.addEventListener('click',()=>fi.click());
+fi.addEventListener('change',()=>{if(fi.files[0])loadFile(fi.files[0])});
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('over')});
+dz.addEventListener('dragleave',()=>dz.classList.remove('over'));
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('over');if(e.dataTransfer.files[0])loadFile(e.dataTransfer.files[0])});
+</script>
+</body>
+</html>

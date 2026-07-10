@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")"
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "Cannot find Node.js. Please install Node.js 20+ first: https://nodejs.org/"
+  exit 1
+fi
+
+if [ "${1:-}" != "--help" ] && [ "${1:-}" != "-h" ] && [ ! -d "node_modules/playwright" ]; then
+  echo "Dependencies are not installed yet."
+  echo "Run ./setup.sh once, then run this command again."
+  exit 1
+fi
+
+exec node ./run.mjs "$@"

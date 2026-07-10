@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>批量同款评测台</title>
+<style>
+:root{--bg:#0f1419;--panel:#1a1f2e;--panel2:#232938;--border:#2d3548;--text:#e4e6eb;--dim:#8b93a7;--accent:#4dd0e1;--green:#66bb6a;--orange:#ffa726;--red:#ef5350;--blue:#42a5f5;--purple:#ab47bc}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+.header{background:linear-gradient(135deg,#1a1f2e,#232938);padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.header h1{font-size:18px;font-weight:600}.header h1 span{color:var(--accent)}
+.header .links a{color:var(--dim);font-size:12px;margin-left:12px;text-decoration:none}
+.header .links a:hover{color:var(--accent)}
+.dashboard{display:flex;gap:1px;background:var(--border);border-bottom:1px solid var(--border);align-items:stretch}
+.dash-numbers{display:flex;flex:1;background:var(--panel)}
+.dash-numbers .stat{flex:1;padding:14px 10px;text-align:center;display:flex;flex-direction:column;justify-content:center;border-right:1px solid var(--border)}
+.dash-numbers .stat:last-child{border-right:none}
+.dash-numbers .num{font-size:26px;font-weight:700;line-height:1.1}
+.dash-numbers .lbl{font-size:11px;color:var(--dim);margin-top:3px}
+.stat.found .num{color:var(--green)}.stat.notfound .num{color:var(--red)}.stat.recall .num{color:var(--accent)}.stat.nores .num{color:var(--orange)}
+.dash-chart{width:230px;min-width:230px;background:var(--panel);padding:12px;display:flex;align-items:center;gap:14px;border-left:1px solid var(--border)}
+.pie-wrap{position:relative;width:96px;height:96px;flex-shrink:0}
+.pie-wrap svg{width:100%;height:100%;transform:rotate(-90deg)}
+.pie-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.pie-center .pct{font-size:18px;font-weight:700;color:var(--accent)}
+.pie-center .pct-lbl{font-size:9px;color:var(--dim)}
+.legend{display:flex;flex-direction:column;gap:5px}
+.legend .li{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dim)}
+.legend .dot{width:9px;height:9px;border-radius:2px;flex-shrink:0}
+.legend .li b{color:var(--text);font-weight:600}
+.toolbar{display:flex;gap:8px;align-items:center;padding:12px 20px;background:var(--panel);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.toolbar .btn{padding:7px 14px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;color:var(--text);cursor:pointer;font-size:13px}
+.toolbar .btn:hover{border-color:var(--accent)}
+.toolbar .btn.primary{background:var(--accent);color:#000;border-color:var(--accent);font-weight:600}
+.toolbar .btn:disabled{opacity:.5;cursor:not-allowed}
+.toolbar .sep{width:1px;height:24px;background:var(--border);margin:0 4px}
+.toolbar .progress{font-size:13px;color:var(--dim)}
+.tabs{display:flex;gap:4px}
+.tab{padding:5px 12px;background:var(--panel2);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:12px}
+.tab.active{background:var(--accent);color:#000;border-color:var(--accent)}
+.log-panel{background:var(--panel);border-bottom:1px solid var(--border);display:flex;flex-direction:column;max-height:200px;transition:max-height .3s}
+.log-panel.collapsed{max-height:32px}
+.log-head{display:flex;align-items:center;justify-content:space-between;padding:6px 14px;cursor:pointer;background:var(--panel2);border-bottom:1px solid var(--border);font-size:12px;flex-shrink:0}
+.log-head:hover{color:var(--accent)}
+.log-head .arrow{transition:transform .2s;color:var(--dim)}
+.log-panel.collapsed .arrow{transform:rotate(-90deg)}
+.log-body{flex:1;overflow-y:auto;background:#0a0d14;padding:8px 12px;font-family:"SF Mono",Menlo,monospace;font-size:11px;line-height:1.6;color:#a0aabf;min-height:0}
+.log-body::-webkit-scrollbar{width:6px}.log-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.log-line{white-space:pre-wrap;word-break:break-all}
+.log-line.err{color:var(--red)}
+.log-line.ts{color:var(--accent)}
+.layout{display:grid;grid-template-columns:300px 1fr;height:calc(100vh - 200px);min-height:300px}
+.sidebar{background:var(--panel);border-right:1px solid var(--border);overflow-y:auto;padding:14px}
+.sidebar h3{font-size:12px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+.img-pick{display:grid;grid-template-columns:repeat(auto-fill,minmax(48px,1fr));gap:5px;margin-bottom:10px;max-height:220px;overflow-y:auto;padding:2px}
+.collapse-head{display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:6px 8px;background:var(--panel2);border:1px solid var(--border);border-radius:5px;margin-bottom:8px;font-size:12px}
+.collapse-head:hover{border-color:var(--accent)}
+.collapse-head .arrow{transition:transform .2s;color:var(--dim)}
+.collapse-head.open .arrow{transform:rotate(90deg)}
+.collapse-body{display:none}
+.collapse-body.open{display:block}
+.img-pick .ip{position:relative;aspect-ratio:1;border:2px solid var(--border);border-radius:4px;overflow:hidden;cursor:pointer}
+.img-pick .ip img{width:100%;height:100%;object-fit:cover}
+.img-pick .ip.checked{border-color:var(--accent)}
+.img-pick .ip .chk{position:absolute;top:2px;right:2px;width:16px;height:16px;border-radius:50%;background:var(--accent);color:#000;font-size:10px;display:flex;align-items:center;justify-content:center}
+.upload-btn{display:block;padding:9px;margin-bottom:10px;background:var(--panel2);border:1px dashed var(--border);border-radius:6px;color:var(--dim);text-align:center;cursor:pointer;font-size:12px}
+.upload-btn:hover{border-color:var(--accent);color:var(--accent)}
+.upload-btn input{display:none}
+.field{margin-bottom:10px}
+.field label{display:block;font-size:12px;color:var(--dim);margin-bottom:4px}
+.field input,.field select{width:100%;background:var(--panel2);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:6px 8px;font-size:13px}
+.check{display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:6px;cursor:pointer}
+.check input{accent-color:var(--accent)}
+.main{overflow-y:auto;padding:18px}
+.empty{text-align:center;color:var(--dim);padding:60px 20px}
+.empty .ico{font-size:40px;margin-bottom:10px}
+.product-card{background:var(--panel);border:1px solid var(--border);border-radius:10px;margin-bottom:16px;overflow:hidden}
+.product-card.found{border-left:3px solid var(--green)}
+.product-card.notfound{border-left:3px solid var(--red)}
+.product-card.nores{border-left:3px solid var(--orange)}
+.pc-head{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--panel2);border-bottom:1px solid var(--border)}
+.pc-head .idx{background:var(--bg);color:var(--accent);width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
+.pc-head .name{flex:1;font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pc-head .pstatus{font-size:11px;padding:2px 8px;border-radius:10px;white-space:nowrap}
+.pstatus.found{background:rgba(102,187,106,.2);color:var(--green)}
+.pstatus.notfound{background:rgba(239,83,80,.15);color:var(--red)}
+.pstatus.nores{background:rgba(255,167,38,.15);color:var(--orange)}
+.pstatus.running{background:rgba(77,208,225,.15);color:var(--accent)}
+.pc-head .price-range{font-size:14px;font-weight:700;color:var(--blue);font-variant-numeric:tabular-nums;white-space:nowrap}
+.pc-stats{display:flex;gap:8px;flex-shrink:0}
+.pc-stats .chip{font-size:13px;font-weight:600;padding:2px 9px;border-radius:11px;white-space:nowrap}
+.pc-stats .chip.yes{background:rgba(102,187,106,.22);color:var(--green)}
+.pc-stats .chip.total{background:var(--panel2);color:var(--dim)}
+.pc-stats .chip.sep{background:none;color:var(--dim);padding:0;font-weight:400}
+.pc-body{display:flex;gap:0}
+.pc-body{display:none}
+.product-card.open .pc-body{display:flex}
+.pc-toggle{cursor:pointer;display:flex;align-items:center;gap:10px;flex:1;min-width:0}
+.pc-thumb{width:40px;height:40px;border-radius:5px;object-fit:cover;flex-shrink:0;border:1px solid var(--border)}
+.pc-thumb.empty{display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--dim);font-size:16px}
+.pc-arrow{color:var(--dim);font-size:12px;transition:transform .2s;flex-shrink:0}
+.product-card.open .pc-arrow{transform:rotate(90deg)}
+.pc-orig{width:160px;flex-shrink:0;padding:12px;border-right:1px solid var(--border)}
+.pc-orig .lbl{font-size:11px;color:var(--dim);margin-bottom:6px;text-align:center}
+.pc-orig img{width:100%;aspect-ratio:1;object-fit:contain;border-radius:6px;background:var(--panel2)}
+.pc-results{flex:1;padding:12px;overflow:hidden}
+.pc-results .lbl{font-size:11px;color:var(--dim);margin-bottom:8px;display:flex;justify-content:space-between}
+.result-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
+.ri{background:var(--panel2);border:1px solid var(--border);border-radius:6px;overflow:hidden;position:relative}
+.ri.yes{border-color:var(--green);box-shadow:0 0 0 1px var(--green)}
+.ri.no{opacity:.45;border-color:var(--red)}
+.ri img{width:100%;aspect-ratio:1;object-fit:contain;background:#000;cursor:zoom-in}
+.ri .info{padding:5px 6px}
+.ri .ttl{font-size:11px;line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;color:var(--text);text-decoration:none;cursor:pointer}
+.ri .ttl:hover{color:var(--accent)}
+.ri .pr{font-size:12px;font-weight:700;color:var(--blue);text-decoration:none;cursor:pointer}
+.ri .pr:hover{text-decoration:underline}
+
+.ri .pr{font-size:12px;font-weight:700;color:var(--blue);margin-top:2px}
+.ri .rank{position:absolute;top:3px;left:3px;background:rgba(0,0,0,.7);color:#fff;font-size:9px;padding:1px 4px;border-radius:3px;z-index:2}
+.ri .mbtns{position:absolute;top:3px;right:3px;display:flex;gap:2px;z-index:2}
+.ri .mbtns span{width:18px;height:18px;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;background:rgba(0,0,0,.75);color:#fff}
+.ri .mbtns .y.on{background:var(--green);color:#000}
+.ri .mbtns .n.on{background:var(--red);color:#000}
+.history-list{max-height:420px;overflow-y:auto}
+.history-list::-webkit-scrollbar{width:6px}
+.history-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.history-list::-webkit-scrollbar-thumb:hover{background:var(--dim)}
+.history-list .hl{display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:4px;cursor:pointer;font-size:12px}
+.history-list .hl:hover{background:var(--panel2)}
+.history-list .hl{justify-content:space-between}
+.history-list .hl .del{color:var(--red);opacity:0;cursor:pointer;font-size:13px;padding:2px 6px;border-radius:3px}
+.history-list .hl:hover .del{opacity:.7}
+.history-list .hl .del:hover{opacity:1;background:rgba(239,83,80,.15)}
+.pc-del{cursor:pointer;color:var(--dim);font-size:14px;padding:2px 6px;border-radius:4px;flex-shrink:0}
+.pc-del:hover{color:var(--red);background:rgba(239,83,80,.15)}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;z-index:9999}
+.modal{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:20px;width:560px;max-width:90vw;max-height:80vh;display:flex;flex-direction:column;gap:12px}
+.modal h3{font-size:15px;font-weight:600}
+.modal textarea{width:100%;height:180px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:10px;font-family:monospace;font-size:12px;resize:vertical}
+.modal textarea:focus{outline:none;border-color:var(--accent)}
+.modal .actions{display:flex;gap:8px;justify-content:flex-end}
+.modal .actions .btn{padding:7px 16px}
+.modal .result{font-size:12px;color:var(--dim);max-height:120px;overflow-y:auto}
+.modal .result .ok{color:var(--green)}.modal .result .warn{color:var(--orange)}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>批量同款 <span>评测台</span></h1>
+  <div class="links"><a href="/analyze.html">离线分析</a></div>
+</div>
+<div class="dashboard">
+  <div class="dash-numbers">
+    <div class="stat"><div class="num" id="stTotal">0</div><div class="lbl">总商品数</div></div>
+    <div class="stat found"><div class="num" id="stFound">0</div><div class="lbl">找到同款</div></div>
+    <div class="stat notfound"><div class="num" id="stNotFound">0</div><div class="lbl">未找到同款</div></div>
+    <div class="stat nores"><div class="num" id="stNoRes">0</div><div class="lbl">失败 / 无结果</div></div>
+    <div class="stat recall"><div class="num" id="stRecall">—</div><div class="lbl">同款命中率</div></div>
+  </div>
+  <div class="dash-chart">
+    <div class="pie-wrap">
+      <svg id="pieSvg" viewBox="0 0 36 36"></svg>
+      <div class="pie-center"><div class="pct" id="piePct">—</div><div class="pct-lbl">命中率</div></div>
+    </div>
+    <div class="legend" id="pieLegend"></div>
+  </div>
+</div>
+<div class="toolbar">
+  <button class="btn primary" id="batchBtn" onclick="batchRun()">▶ 批量运行选中图片</button>
+  <button class="btn" onclick="loadAllHistory()">加载全部历史</button>
+  <div class="sep"></div>
+  <div class="tabs">
+    <span class="tab active" onclick="setFilter(this,'all')">全部</span>
+    <span class="tab" onclick="setFilter(this,'found')">已找到同款</span>
+    <span class="tab" onclick="setFilter(this,'notfound')">未找到同款</span>
+    <span class="tab" onclick="setFilter(this,'nores')">失败</span>
+    <span class="tab" onclick="setFilter(this,'pending')">未运行</span>
+  </div>
+  <div class="sep"></div>
+  <button class="btn" onclick="exportMarks()">导出标注</button>
+  <span class="progress" id="progress"></span>
+</div>
+<div class="log-panel" id="logPanel">
+  <div class="log-head" onclick="toggleLog()">
+    <span><span class="arrow">▼</span> 运行日志 <span id="logCount" style="color:var(--dim)"></span></span>
+    <button class="btn" style="padding:2px 8px;font-size:11px" onclick="event.stopPropagation();clearLog()">清空</button>
+  </div>
+  <div class="log-body" id="logBody"></div>
+</div>
+<div class="layout">
+  <div class="sidebar">
+    <div class="collapse-head" id="pickHead" onclick="togglePick()">
+      <span>选择图片 <span id="pickCount" style="color:var(--accent)"></span></span>
+      <span class="arrow">▶</span>
+    </div>
+    <div class="collapse-body" id="pickBody">
+      <div class="img-pick" id="imgPick"></div>
+      <label class="upload-btn">＋ 上传图片（可多选）
+        <input type="file" id="fileInput" accept="image/*" multiple style="display:none">
+      </label>
+      <div style="display:flex;gap:4px;margin-bottom:8px">
+        <button class="btn" style="flex:1;padding:4px;font-size:11px" onclick="checkAll(true)">全选</button>
+        <button class="btn" style="flex:1;padding:4px;font-size:11px" onclick="checkAll(false)">清空</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>期望关键词（可选，辅助自动命中率）</label>
+      <input type="text" id="keywords" placeholder="如：美式,字母,印花,短袖">
+    </div>
+    <div class="check"><input type="checkbox" id="headless"> 无头模式（不推荐首次）</div>
+    <div class="check"><input type="checkbox" id="verbose" checked> 详细日志</div>
+    <div class="field"><label>单图超时（毫秒）</label><input type="number" id="timeout" value="180000" step="1000"></div>
+    <div class="field"><label>图间间隔（毫秒，防风控）</label><input type="number" id="gap" value="15000" step="1000"></div>
+    <button class="btn" style="width:100%;padding:8px;margin-top:4px" onclick="openCookieModal()">🔑 导入 Cookie</button>
+    <h3 style="margin-top:14px">历史运行</h3>
+    <div class="history-list" id="histList"></div>
+  </div>
+  <div class="main" id="mainArea">
+    <div class="empty"><div class="ico">🔍</div>在左侧勾选图片后点"批量运行"，或点"加载全部历史"恢复上次评测<br><br>每个商品会展示原图和搜索结果图片，你逐条确认是否同款，顶部实时统计同款命中率。标注会自动保存，刷新不丢。</div>
+  </div>
+</div>
+<div class="modal-overlay hidden" id="cookieModal" onclick="if(event.target===this)closeCookieModal()">
+  <div class="modal">
+    <h3>导入淘宝 Cookie</h3>
+    <div style="font-size:12px;color:var(--dim)">粘贴纯 cookie 字符串（形如 <code>key=val; key=val; ...</code>），会替换现有 session-cookies.json（旧文件自动备份）</div>
+    <textarea id="cookieInput" placeholder="isg=xxx; tfstk=yyy; _m_h5_tk=zzz; cookie2=aaa; ..."></textarea>
+    <div class="result" id="cookieResult"></div>
+    <div class="actions">
+      <button class="btn" onclick="closeCookieModal()">取消</button>
+      <button class="btn primary" onclick="submitCookie()">替换</button>
+    </div>
+  </div>
+</div>
+<script>
+let allImages=[], checked=new Set(), evalState=[], filter='all', running=false;
+
+function openCookieModal(){document.getElementById('cookieModal').classList.remove('hidden');document.getElementById('cookieInput').focus();}
+function closeCookieModal(){document.getElementById('cookieModal').classList.add('hidden');document.getElementById('cookieResult').innerHTML='';document.getElementById('cookieInput').value='';}
+async function submitCookie(){
+  const v=document.getElementById('cookieInput').value.trim();
+  if(!v){alert('请粘贴 cookie 字符串');return;}
+  const el=document.getElementById('cookieResult');
+  el.innerHTML='<span style="color:var(--accent)">提交中…</span>';
+  try{
+    const r=await fetch('/api/cookies',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cookie:v})}).then(r=>r.json());
+    if(r.error){el.innerHTML='<span class="warn">✗ '+r.error+'</span>';return;}
+    let html='<span class="ok">✓ 已写入 '+r.count+' 条 cookie</span>';
+    if(r.missing&&r.missing.length)html+='<br><span class="warn">⚠ 缺少关键字段: '+r.missing.join(', ')+'（可能影响登录态）</span>';
+    else html+='<br><span class="ok">关键字段齐全 ✓</span>';
+    html+='<br><span style="color:var(--dim)">字段: '+r.names.slice(0,12).join(', ')+(r.names.length>12?'…':'')+'</span>';
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<span class="warn">✗ '+e.message+'</span>';}
+}
+function appendLog(line,isErr){
+  const body=document.getElementById('logBody');
+  const div=document.createElement('div');
+  div.className='log-line'+(isErr?' err':'');
+  div.textContent=line;
+  body.appendChild(div);
+  body.scrollTop=body.scrollHeight;
+  const cnt=document.getElementById('logCount');
+  cnt.textContent='('+body.children.length+' 行)';
+}
+function clearLog(){document.getElementById('logBody').innerHTML='';document.getElementById('logCount').textContent='';}
+function toggleLog(){document.getElementById('logPanel').classList.toggle('collapsed');}
+async function init(){
+  const r=await fetch('/api/images').then(r=>r.json());
+  allImages=[...r.images,...r.uploads];
+  renderImgPick();
+  document.getElementById('fileInput').addEventListener('change',onUpload);
+  await loadHistoryList();
+  await loadAllHistory();
+}
+async function onUpload(input){
+  const files=input.target.files;
+  if(!files||!files.length)return;
+  for(const file of files){
+    const dataUrl=await new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.onerror=rej;fr.readAsDataURL(file);});
+    const r=await fetch('/api/upload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:file.name,dataUrl})}).then(r=>r.json()).catch(()=>null);
+    if(r&&r.url){
+      allImages.unshift({name:r.name,source:'upload',url:r.url});
+      checked.add(r.url);
+    }else{alert('上传失败: '+(r?.error||file.name));}
+  }
+  input.target.value='';
+  renderImgPick();
+  renderAll();
+}
+function togglePick(){
+  const h=document.getElementById('pickHead'),b=document.getElementById('pickBody');
+  h.classList.toggle('open');b.classList.toggle('open');
+}
+function renderImgPick(){
+  const cnt=document.getElementById('pickCount');
+  if(cnt)cnt.textContent=checked.size?('已选 '+checked.size+'/'+allImages.length):'';
+  const el=document.getElementById('imgPick');
+  if(!allImages.length){el.innerHTML='<div style="grid-column:1/-1;color:var(--dim);font-size:12px">images/ 为空，请先放图片进去</div>';return;}
+  el.innerHTML=allImages.map(im=>`<div class="ip ${checked.has(im.url)?'checked':''}" onclick="toggle('${im.url}')"><img src="${im.url}" loading="lazy">${checked.has(im.url)?'<div class="chk">✓</div>':''}</div>`).join('');
+}
+function toggle(url){checked.has(url)?checked.delete(url):checked.add(url);renderImgPick();}
+function checkAll(v){if(v)allImages.forEach(i=>checked.add(i.url));else checked.clear();renderImgPick();}
+
+async function loadHistoryList(){
+  const r=await fetch('/api/runs').then(r=>r.json());
+  document.getElementById('histList').innerHTML=r.runs.filter(x=>x.hasResult).map(run=>`<div class="hl"><span onclick="addHistoryRun('${run.runId}')">${run.runId.slice(5,16).replace('T',' ')} ${run.imageName||''}</span><span class="del" onclick="deleteRun(event,'${run.runId}')">✕</span></div>`).join('')||'<div style="color:var(--dim);font-size:11px;padding:4px">暂无</div>';
+}
+
+function makeItem(runId,name,origUrl,metrics,status){
+  return {key:runId||('img-'+name), runId, name, origUrl, status, metrics, marks:{}};
+}
+function addOrUpdate(item){
+  let ex=evalState.find(e=>e.key===item.key);
+  if(ex){Object.assign(ex,item);}else{evalState.push(item);}
+}
+async function loadRun(runId){
+  const r=await fetch('/api/results?runId='+encodeURIComponent(runId)).then(r=>r.json());
+  if(!r.metrics)return null;
+  const m=await fetch('/api/marks?runId='+encodeURIComponent(runId)).then(r=>r.json()).catch(()=>({marks:{}}));
+  const it=makeItem(runId, r.meta.imageName||runId, r.meta.originalImageUrl, r.metrics, 'done');
+  it.marks=m.marks||{};
+  return it;
+}
+async function addHistoryRun(runId){
+  document.getElementById('progress').textContent='加载 '+runId.slice(5,16).replace('T',' ')+'…';
+  const it=await loadRun(runId);
+  if(it){
+    addOrUpdate(it);
+    renderAll();
+    const idx=evalState.findIndex(e=>e.key===it.key);
+    if(idx>=0){
+      const card=document.querySelector('.product-card:nth-of-type('+(idx+1)+')');
+      if(card){
+        card.scrollIntoView({behavior:'smooth',block:'center'});
+        card.style.transition='box-shadow .3s';
+        card.style.boxShadow='0 0 0 2px var(--accent)';
+        setTimeout(()=>{card.style.boxShadow='';},1500);
+      }
+    }
+  }
+  document.getElementById('progress').textContent='';
+}
+async function loadAllHistory(){
+  const r=await fetch('/api/runs').then(r=>r.json());
+  const withRes=r.runs.filter(x=>x.hasResult);
+  if(!withRes.length)return;
+  document.getElementById('progress').textContent='恢复历史标注中…';
+  for(const run of withRes){
+    const it=await loadRun(run.runId);
+    if(it)addOrUpdate(it);
+  }
+  document.getElementById('progress').textContent='';
+  renderAll();
+}
+
+async function batchRun(){
+  if(running){alert('正在运行中');return;}
+  const sel=allImages.filter(i=>checked.has(i.url));
+  if(!sel.length){alert('请先勾选图片');return;}
+  running=true;document.getElementById('batchBtn').disabled=true;
+  const keywords=document.getElementById('keywords').value;
+  const params={headless:document.getElementById('headless').checked,verbose:document.getElementById('verbose').checked,timeout:Number(document.getElementById('timeout').value)||180000};
+  const gap=Number(document.getElementById('gap').value)||15000;
+  sel.forEach(im=>{let it=evalState.find(e=>e.name===im.name);if(!it){it=makeItem(null,im.name,im.url,null,'pending');evalState.push(it);}});
+  renderAll();
+  for(let i=0;i<sel.length;i++){
+    const im=sel[i];const it=evalState.find(e=>e.name===im.name);
+    it.status='running';renderAll();
+    document.getElementById('progress').textContent=`运行 ${i+1}/${sel.length}：${im.name}`;
+    try{
+      const runId=await runOne(im,keywords,params);
+      const res=await fetch('/api/results?runId='+encodeURIComponent(runId)).then(r=>r.json());
+      it.runId=runId;it.metrics=res.metrics;it.origUrl=res.meta.originalImageUrl||im.url;
+      const m=await fetch('/api/marks?runId='+encodeURIComponent(runId)).then(r=>r.json()).catch(()=>({marks:{}}));
+      it.marks=m.marks||{};
+      it.status=res.metrics&&res.metrics.itemCount>0?'done':'nores';
+    }catch(e){it.status='nores';console.error(e);}
+    renderAll();
+    if(i<sel.length-1)await sleep(gap);
+  }
+  running=false;document.getElementById('batchBtn').disabled=false;
+  document.getElementById('progress').textContent='完成，共 '+sel.length+' 个商品';
+}
+function runOne(im,keywords,params){
+  return new Promise(async(resolve,reject)=>{
+    try{
+      const resp=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({imageUrl:im.url,keywords,params})});
+      const reader=resp.body.getReader();const dec=new TextDecoder();let buf='';let runId=null;
+      while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});const lines=buf.split('\n');buf=lines.pop();for(const line of lines){if(!line.trim())continue;try{const ev=JSON.parse(line);if(ev.type==='start'){runId=ev.runId;appendLog('▶ 开始: '+(ev.imagePath||'').split(/[\\/]/).pop());appendLog('  参数: '+(ev.args||[]).join(' '));}if(ev.type==='log'){appendLog(ev.line,ev.stream==='stderr');}if(ev.type==='done'){appendLog('✓ 完成 exitCode='+(ev.exitCode??'?')+' status='+(ev.status??'?')+(ev.hasResult?' (有结果)':' (无结果)'));resolve(runId);}}catch{}}}
+      resolve(runId);
+    }catch(e){reject(e);}
+  });
+}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+function itemStatus(it){
+  if(it.status==='pending')return 'pending';
+  if(it.status==='running')return 'running';
+  if(!it.metrics||it.metrics.itemCount===0)return 'nores';
+  return Object.values(it.marks).some(v=>v==='yes')?'found':'notfound';
+}
+function priceRange(it){
+  if(!it.metrics||!it.metrics.price||!it.metrics.price.count)return '—';
+  const p=it.metrics.price;let r=`¥${p.min} ~ ¥${p.max}`;
+  const yesRows=it.metrics.rows.filter((_,i)=>it.marks[i]==='yes').map(x=>x.price).filter(v=>Number.isFinite(v));
+  if(yesRows.length){const ys=[...yesRows].sort((a,b)=>a-b);const mid=ys.length%2?ys[(ys.length-1)/2]:(ys[ys.length/2-1]+ys[ys.length/2])/2;r+=` ｜ 同款中位 ¥${Math.round(mid*100)/100}`;}
+  return r;
+}
+function renderAll(){renderStats();renderCards();}
+function renderStats(){
+  const found=evalState.filter(it=>itemStatus(it)==='found');
+  const notfound=evalState.filter(it=>itemStatus(it)==='notfound');
+  const nores=evalState.filter(it=>itemStatus(it)==='nores');
+  const total=evalState.length;
+  document.getElementById('stTotal').textContent=total;
+  document.getElementById('stFound').textContent=found.length;
+  document.getElementById('stNotFound').textContent=notfound.length;
+  document.getElementById('stNoRes').textContent=nores.length;
+  const withRes=found.length+notfound.length;
+  const recall=withRes?(found.length/withRes*100).toFixed(1):null;
+  document.getElementById('stRecall').textContent=recall!==null?recall+'%':'—';
+  document.getElementById('piePct').textContent=recall!==null?recall+'%':'—';
+  // 饼图:找到/未找到/失败
+  const segs=[
+    {val:found.length,color:'#66bb6a',label:'找到同款'},
+    {val:notfound.length,color:'#ef5350',label:'未找到'},
+    {val:nores.length,color:'#ffa726',label:'失败'},
+  ].filter(s=>s.val>0);
+  let svgInner='';
+  if(!total){svgInner='<circle cx="18" cy="18" r="15.915" fill="none" stroke="#2d3548" stroke-width="3.5"/>';}
+  else if(segs.length===1){svgInner='<circle cx="18" cy="18" r="15.915" fill="none" stroke="'+segs[0].color+'" stroke-width="3.5"/>';}
+  else{
+    let offset=25; // 起点12点钟方向
+    const c=2*Math.PI*15.915;
+    for(const seg of segs){
+      const pct=seg.val/total;
+      const dash=c*pct;
+      svgInner+='<circle cx="18" cy="18" r="15.915" fill="none" stroke="'+seg.color+'" stroke-width="3.5" stroke-dasharray="'+dash.toFixed(2)+' '+(c-dash).toFixed(2)+'" stroke-dashoffset="'+(-offset).toFixed(2)+'"/>';
+      offset+=dash;
+    }
+  }
+  document.getElementById('pieSvg').innerHTML=svgInner;
+  // 图例
+  const legend=document.getElementById('pieLegend');
+  legend.innerHTML=segs.length?segs.map(seg=>
+    '<div class="li"><span class="dot" style="background:'+seg.color+'"></span>'+seg.label+' <b>'+seg.val+'</b> ('+(total?(seg.val/total*100).toFixed(0):0)+'%)</div>'
+  ).join(''):'<div class="li" style="color:var(--dim)">暂无数据</div>';
+}
+function renderCards(){
+  const main=document.getElementById('mainArea');
+  if(!evalState.length){main.innerHTML='<div class="empty"><div class="ico">🔍</div>勾选图片后批量运行，或点"加载全部历史"</div>';return;}
+  const visible=evalState.filter(it=>{const s=itemStatus(it);if(filter==='all')return true;return s===filter;});
+  main.innerHTML=visible.length?visible.map(it=>{
+    const s=itemStatus(it);const rows=it.metrics?it.metrics.rows:[];const realIdx=evalState.indexOf(it)+1;
+    const yesCnt=Object.values(it.marks).filter(v=>v==='yes').length;
+    const noCnt=Object.values(it.marks).filter(v=>v==='no').length;
+    const sl={pending:'未运行',running:'运行中…',found:'✓ 找到同款',notfound:'✗ 未找到同款',nores:'失败/无结果'}[s];
+    const cardIdx=evalState.indexOf(it);
+return `<div class="product-card ${s}" id="card-${cardIdx}"><div class="pc-head"><div class="pc-toggle" onclick="toggleCard(${cardIdx})"><div class="idx">${realIdx}</div>${it.origUrl?`<img class="pc-thumb" src="${it.origUrl}">`:'<div class="pc-thumb empty">🖼</div>'}<div class="name" title="${esc(it.name)}">${esc(it.name)}</div><span class="pc-arrow">▶</span></div><span class="pstatus ${s}">${sl}</span><span class="price-range">${priceRange(it)}</span>${rows.length?`<div class="pc-stats"><span class="chip yes">同款 ${yesCnt}</span><span class="chip sep">/</span><span class="chip total">总数 ${rows.length}</span></div>`:''}${it.runId?`<span class="pc-del" onclick="deleteRun(event,'${it.runId}',${cardIdx})" title="删除此记录">✕</span>`:''}</div><div class="pc-body"><div class="pc-orig"><div class="lbl">原图</div>${it.origUrl?`<img src="${it.origUrl}">`:'<div class="empty">无</div>'}</div><div class="pc-results">${rows.length?`<div class="lbl"><span>搜索结果（点 ✓同款 / ✗不同）</span><span>${yesCnt} 同款 / ${noCnt} 不同</span></div><div class="result-grid">${rows.map((r,i)=>resultItem(it,r,i)).join('')}</div>`:'<div class="empty">该商品无搜索结果</div>'}</div></div></div>`;
+  }).join(''):'<div class="empty">该筛选条件下无商品</div>';
+}
+function resultItem(it,r,i){
+  const mark=it.marks[i];
+  const idx=evalState.indexOf(it);
+  return `<div class="ri ${mark==='yes'?'yes':mark==='no'?'no':''}"><span class="rank">#${r.rank}</span><div class="mbtns"><span class="y ${mark==='yes'?'on':''}" onclick="setMark(${idx},${i},'yes',event)">✓</span><span class="n ${mark==='no'?'on':''}" onclick="setMark(${idx},${i},'no',event)">✗</span></div>${r.imageUrl?`<img src="${r.imageUrl}" loading="lazy" onclick="window.open('${r.imageUrl}','_blank')">`:'<div style="aspect-ratio:1;background:var(--panel2)"></div>'}<div class="info"><a class="ttl" href="${r.itemUrl}" target="_blank" title="${esc(r.title)}">${esc(r.title)}</a><a class="pr" href="${r.itemUrl}" target="_blank">¥${r.price!=null?r.price:'—'}</a></div></div>`;
+}
+async function setMark(itemIdx,ri,val,e){
+  e.stopPropagation();
+  const it=evalState[itemIdx];if(!it)return;
+  it.marks[ri]=it.marks[ri]===val?'':val;
+  renderAll();
+  if(it.runId) await fetch('/api/marks?runId='+encodeURIComponent(it.runId),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:it.runId,marks:it.marks})}).catch(()=>{});
+}
+function toggleCard(idx){
+  const c=document.getElementById('card-'+idx);
+  if(c)c.classList.toggle('open');
+}
+async function deleteRun(e,runId,cardIdx){
+  if(e)e.stopPropagation();
+  const it=cardIdx!=null?evalState[cardIdx]:evalState.find(x=>x.runId===runId);
+  const name=it?it.name:runId;
+  if(!confirm('确定删除「'+name+'」的搜索记录？此操作不可恢复。'))return;
+  try{
+    const r=await fetch('/api/runs/'+encodeURIComponent(runId),{method:'DELETE'}).then(r=>r.json());
+    if(r.deleted){
+      if(cardIdx!=null&&evalState[cardIdx])evalState.splice(cardIdx,1);
+      else{const i=evalState.findIndex(x=>x.runId===runId);if(i>=0)evalState.splice(i,1);}
+      renderAll();
+      await loadHistoryList();
+    }else{alert('删除失败: '+(r.reason||'未知'));}
+  }catch(err){alert('删除失败: '+err.message);}
+}
+function setFilter(tab,f){document.querySelectorAll('.tabs .tab').forEach(t=>t.classList.remove('active'));tab.classList.add('active');filter=f;renderCards();}
+function exportMarks(){
+  if(!evalState.length){alert('无数据');return;}
+  const data=evalState.map(it=>({image:it.name,status:itemStatus(it),resultCount:it.metrics?.itemCount||0,priceRange:priceRange(it),foundSame:Object.values(it.marks).some(v=>v==='yes'),marks:it.metrics?it.metrics.rows.map((r,i)=>({rank:r.rank,title:r.title,price:r.price,mark:it.marks[i]||'',url:r.itemUrl})).filter(m=>m.mark):[]}));
+  const blob=new Blob([JSON.stringify({summary:{total:evalState.length,found:data.filter(d=>d.foundSame).length},items:data},null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='eval-marks-'+Date.now()+'.json';a.click();
+}
+function esc(s){return String(s??'').replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));}
+init();
+</script>
+</body>
+</html>

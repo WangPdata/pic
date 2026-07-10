@@ -1,0 +1,14 @@
+{
+  "runId": "2026-07-09T07-14-47-556Z",
+  "createdAt": "2026-07-09T07-14-47-556Z",
+  "imageName": "image copy 21.png",
+  "imagePath": "/Users/admin/Downloads/taobao-image-search-portable 2/test-console/uploads/image copy 21.png",
+  "keywords": "",
+  "params": {
+    "headless": false,
+    "verbose": true,
+    "timeout": 10000
+  },
+  "status": "done",
+  "exitCode": 0
+}

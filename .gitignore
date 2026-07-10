@@ -1,0 +1,6 @@
+node_modules/
+outputs/
+profile/
+session-cookies.json
+taobao-image-search-debug/
+*.log
