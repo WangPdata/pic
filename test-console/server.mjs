@@ -16,6 +16,7 @@ const sessionCookiesPath = path.join(projectRoot, "session-cookies.json");
 const uploadsDir = path.join(__dirname, "uploads");
 const PORT = Number(process.env.PORT) || 8787;
 const crawlScript = path.join(__dirname, "crawl.mjs");
+let activeCrawlChild = null; // 当前运行的巡检子进程，供 /api/crawl-stop 终止
 
 await mkdir(runsDir, { recursive: true });
 await mkdir(crawlRunsDir, { recursive: true });
@@ -292,17 +293,45 @@ async function listCrawlRuns() {
       const dir = path.join(crawlRunsDir, e.name);
       let result = null;
       try { result = JSON.parse(await readFile(path.join(dir, "crawl-result.json"), "utf8")); } catch {}
+      // 无 result 时读 config 兜底（巡检仍在运行或崩溃退出，没生成 result）
+      let cfg = null;
+      if (!result) { try { cfg = JSON.parse(await readFile(path.join(dir, "crawl-config.json"), "utf8")); } catch {} }
+      let progress = null;
+      if (!result) { try { progress = JSON.parse(await readFile(path.join(dir, "progress.json"), "utf8")); } catch {} }
       const meta = result ? {
         runId: e.name,
         searchName: result.searchName || "",
         websiteUrl: result.websiteUrl || "",
         pageCount: result.pageCount || 0,
+        requestedPages: result.requestedPages || 0,
+        currentPage: result.pageCount || 0,
+        totalPages: result.requestedPages || result.pageCount || 0,
+        pageTurnFrequency: result.pageTurnFrequency || "",
+        humanOpType: result.humanOpType || "",
         captchaCount: result.captchaCount || 0,
+        captchaTypes: result.captchaTypes || {},
         autoPassed: result.autoPassed,
         status: result.error ? "failed" : "done",
         costMs: result.costMs || 0,
         finishedAt: result.finishedAt || "",
-      } : { runId: e.name, status: "running", searchName: "", websiteUrl: "", pageCount: 0, captchaCount: 0, autoPassed: null, costMs: 0, finishedAt: "" };
+        error: result.error || "",
+      } : {
+        runId: e.name,
+        status: "running",
+        searchName: cfg ? (cfg.searchName || "") : "",
+        websiteUrl: cfg ? (cfg.websiteUrl || "") : "",
+        pageCount: 0,
+        requestedPages: cfg ? (cfg.pageCount || 0) : 0,
+        currentPage: progress ? progress.currentPage : 0,
+        totalPages: progress ? progress.totalPages : (cfg ? (cfg.pageCount || 0) : 0),
+        pageTurnFrequency: progress ? `${progress.currentPage}/${progress.totalPages} 页（运行中）` : (cfg ? (cfg.pageCount + " 页（运行中）") : ""),
+        humanOpType: cfg ? (cfg.humanScroll ? "上下滑动" : "无") : "",
+        captchaCount: 0,
+        captchaTypes: {},
+        autoPassed: null,
+        costMs: 0,
+        finishedAt: "",
+      };
       runs.push({ ...meta, hasResult: Boolean(result) });
     }
     runs.sort((a, b) => (b.finishedAt || b.runId).localeCompare(a.finishedAt || a.runId));
@@ -372,6 +401,7 @@ async function handleCrawlRun(req, res, body) {
 
   const args = ["--config", configPath, "--out", runOutDir];
   const child = spawn("node", [crawlScript, ...args], { cwd: projectRoot });
+  activeCrawlChild = child; // 记录当前子进程供停止
 
   res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "X-Accel-Buffering": "no" });
   const writeLine = (obj) => res.write(JSON.stringify(obj) + "\n");
@@ -397,6 +427,7 @@ async function handleCrawlRun(req, res, body) {
   });
 
   child.on("close", async () => {
+    if (activeCrawlChild === child) activeCrawlChild = null;
     const results = await getCrawlResults(runId);
     writeLine({ type: "done", runId, status: results?.error ? "failed" : "done", result: results });
     res.end();
@@ -551,6 +582,15 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/crawl-results" && url.searchParams.get("runId")) {
       const r = await getCrawlResults(url.searchParams.get("runId"));
       return r ? sendJson(res, 200, r) : sendJson(res, 404, { error: "run not found" });
+    }
+    if (p === "/api/crawl-stop" && req.method === "POST") {
+      if (activeCrawlChild) {
+        try { activeCrawlChild.kill("SIGTERM"); } catch {}
+        try { activeCrawlChild.kill("SIGKILL"); } catch {}
+        activeCrawlChild = null;
+        return sendJson(res, 200, { stopped: true });
+      }
+      return sendJson(res, 200, { stopped: false, reason: "no active crawl" });
     }
     if (p === "/api/crawl" && req.method === "POST") return handleCrawlRun(req, res, await readBody(req));
     if (p.startsWith("/api/crawl-runs/") && req.method === "DELETE") {

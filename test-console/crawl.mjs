@@ -866,6 +866,8 @@ async function main() {
     for (let i = 1; i <= pageCount; i += 1) {
       const pageStart = Date.now();
       emit({ type: "page", page: i, url: page.url() });
+      // 实时写进度文件，供历史列表显示"当前第N页/共M页"
+      try { await writeFile(path.join(runOutDir, "progress.json"), JSON.stringify({ currentPage: i, totalPages: pageCount, url: page.url(), at: new Date().toISOString() }), "utf8"); } catch {}
       const dwell = rand(dwellMin, dwellMax);
       log(`第 ${i}/${pageCount} 页 · 停留 ${dwell}ms`);
 

@@ -160,6 +160,7 @@ body{background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,"PingFan
 </div>
 <div class="toolbar">
   <button class="btn primary" id="runBtn" onclick="startCrawl()">▶ 开始巡检</button>
+  <button class="btn" id="stopBtn" onclick="stopCrawl()" style="color:var(--red);display:none">■ 停止</button>
   <button class="btn" onclick="loadHistory()">刷新历史</button>
   <div class="sep"></div>
   <div class="tabs">
@@ -378,6 +379,8 @@ async function startCrawl(){
     headless:$('headless').checked,
     timeout:Number($('timeout').value)||300000,
   };
+  $('stopBtn').style.display='';
+  $('runBtn').disabled=true;
   $('progress').textContent='启动巡检…';
   appendLog('▶ 开始巡检: '+websiteUrl+(payload.searchName?(' · 关键词 '+payload.searchName):'')+(payload.imageUrl?' · 图搜':''));
   try{
@@ -385,8 +388,16 @@ async function startCrawl(){
     await loadHistory();
     if(runId)await loadRun(runId);
   }catch(e){appendLog('✗ 启动失败: '+e.message,'err');}
-  running=false;$('runBtn').disabled=false;
+  running=false;$('runBtn').disabled=false;$('stopBtn').style.display='none';
   $('progress').textContent='';
+}
+async function stopCrawl(){
+  if(!running){alert('当前没有运行中的巡检');return;}
+  try{
+    appendLog('■ 正在停止巡检…','err');
+    const r=await fetch('/api/crawl-stop',{method:'POST'}).then(r=>r.json());
+    appendLog(r.stopped?'✓ 已发送停止信号':'⚠ 无运行中的任务','err');
+  }catch(e){appendLog('✗ 停止失败: '+e.message,'err');}
 }
 function streamRun(payload){
   return new Promise(async(resolve,reject)=>{
@@ -403,7 +414,7 @@ function handleEvent(ev){
   if(ev.type==='start'){appendLog('▶ 巡检启动 · '+(ev.pageCount||'?')+' 页 · '+ev.websiteUrl);}
   else if(ev.type==='phase'){appendLog('⚙ 参数: '+(ev.imageSearch?'图搜':'')+(ev.searchName?(' 关键词='+ev.searchName):'')+' '+(ev.pageCount)+'页 停留'+(ev.dwellMin)+'~'+(ev.dwellMax)+'ms '+(ev.humanScroll?'滑动':'无滑动')+(ev.crawlPageInfo?' 爬取':''));}
   else if(ev.type==='log'){appendLog(ev.line,ev.stream==='stderr'?'err':'');}
-  else if(ev.type==='page'){appendLog('第 '+(ev.page)+' 页 · '+ev.url);}
+  else if(ev.type==='page'){appendLog('第 '+(ev.page)+' 页 · '+ev.url);$('progress').textContent='第 '+ev.page+' 页';}
   else if(ev.type==='captcha'){const cls=ev.autoSolved?'ok':'cap';appendLog((ev.autoSolved?'✓ 验证码已通过':'⚠ 验证码未通过')+': '+(ev.label||ev.type)+(ev.method?(' · '+ev.method):'')+(ev.reason?(' · '+ev.reason):''),cls);}
   else if(ev.type==='done'){appendLog((ev.status==='done'?'✓':'✗')+' 巡检完成 status='+ev.status+(ev.result?.error?(' · '+ev.result.error):''),ev.status==='done'?'ok':'err');$('progress').textContent='完成';}
   else if(ev.type==='fatal'){appendLog('✗ '+ev.message,'err');}
@@ -470,7 +481,7 @@ function runCard(r){
       <div class="metrics-grid">
         <div class="metric"><div class="k">搜索名称</div><div class="v">${esc(r.searchName||'—')}</div></div>
         <div class="metric"><div class="k">网站链接</div><div class="v accent" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.websiteUrl)}">${esc(r.websiteUrl||'—')}</div></div>
-        <div class="metric"><div class="k">翻页频率</div><div class="v blue">${esc(r.pageTurnFrequency||((r.pageCount||0)+'页'))}</div></div>
+        <div class="metric"><div class="k">翻页进度</div><div class="v blue">${(r.currentPage||0)}/${(r.totalPages||r.requestedPages||r.pageCount||0)}页${r.pageTurnFrequency?(' \u00b7 '+esc(r.pageTurnFrequency)):''}</div></div>
         <div class="metric"><div class="k">拟人操作类型</div><div class="v">${esc(r.humanOpType||(r.humanScroll?'上下滑动':'无'))}</div></div>
         <div class="metric"><div class="k">验证码次数</div><div class="v orange">${r.captchaCount||0}</div></div>
         <div class="metric"><div class="k">验证码类型</div><div class="v" style="font-size:11px">${capEntries.length?capEntries.map(([k,v])=>esc(k)+'×'+v).join(' '):'无'}</div></div>
