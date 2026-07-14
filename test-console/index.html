@@ -8,6 +8,10 @@
 :root{--bg:#0f1419;--panel:#1a1f2e;--panel2:#232938;--border:#2d3548;--text:#e4e6eb;--dim:#8b93a7;--accent:#4dd0e1;--green:#66bb6a;--orange:#ffa726;--red:#ef5350;--blue:#42a5f5;--purple:#ab47bc}
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+.head-tabs{display:flex;gap:1px;background:var(--border);border-bottom:1px solid var(--border)}
+.head-tabs .nav{flex:1;padding:14px 20px;text-align:center;cursor:pointer;background:var(--panel);font-size:14px;font-weight:600;color:var(--dim);text-decoration:none;border-bottom:2px solid transparent;transition:.15s}
+.head-tabs .nav:hover{color:var(--text)}
+.head-tabs .nav.active{color:var(--accent);border-bottom-color:var(--accent);background:var(--bg)}
 .header{background:linear-gradient(135deg,#1a1f2e,#232938);padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
 .header h1{font-size:18px;font-weight:600}.header h1 span{color:var(--accent)}
 .header .links a{color:var(--dim);font-size:12px;margin-left:12px;text-decoration:none}
@@ -150,7 +154,12 @@ body{background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,"PingFan
 <body>
 <div class="header">
   <h1>批量同款 <span>评测台</span></h1>
-  <div class="links"><a href="/analyze.html">离线分析</a></div>
+  <div class="links"><a href="/crawl.html">🌐 网站巡检台</a><a href="/analyze.html">📊 离线分析</a></div>
+</div>
+<div class="head-tabs" style="margin-top:-1px">
+  <a class="nav active" href="/">🛒 比价评测台</a>
+  <a class="nav" href="/crawl.html">🌐 网站巡检台</a>
+  <a class="nav" href="/analyze.html">📊 离线分析</a>
 </div>
 <div class="dashboard">
   <div class="dash-numbers">

@@ -1,0 +1,13 @@
+{
+  "runId": "2026-07-10T06-35-19-273Z",
+  "createdAt": "2026-07-10T06-35-19-273Z",
+  "imageName": "image copy 41.png",
+  "imagePath": "/Users/admin/pic/test-console/uploads/image copy 41.png",
+  "keywords": "",
+  "params": {
+    "headless": false,
+    "verbose": true,
+    "timeout": 180000
+  },
+  "status": "running"
+}

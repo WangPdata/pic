@@ -1,0 +1,14 @@
+{
+  "runId": "2026-07-10T06-34-16-095Z",
+  "createdAt": "2026-07-10T06-34-16-095Z",
+  "imageName": "image01.png",
+  "imagePath": "/Users/admin/pic/images/image01.png",
+  "keywords": "",
+  "params": {
+    "headless": false,
+    "verbose": true,
+    "timeout": 180000
+  },
+  "status": "failed",
+  "exitCode": 1
+}

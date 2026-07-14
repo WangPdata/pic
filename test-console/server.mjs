@@ -11,11 +11,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
 const imagesDir = path.join(projectRoot, "images");
 const runsDir = path.join(__dirname, "runs");
+const crawlRunsDir = path.join(__dirname, "crawl-runs");
 const sessionCookiesPath = path.join(projectRoot, "session-cookies.json");
 const uploadsDir = path.join(__dirname, "uploads");
 const PORT = Number(process.env.PORT) || 8787;
+const crawlScript = path.join(__dirname, "crawl.mjs");
 
 await mkdir(runsDir, { recursive: true });
+await mkdir(crawlRunsDir, { recursive: true });
 await mkdir(uploadsDir, { recursive: true });
 
 const MIME = {
@@ -235,24 +238,28 @@ async function saveMarks(runId, marks) {
   return data;
 }
 
-function parseCookieString(raw) {
-  return String(raw || "").split(";").map((p) => p.trim()).filter(Boolean).map((pair) => {
+function parseCookieString(raw, domain) {
+  const dom = (domain || ".taobao.com").trim();
+  // 同时注入到主域和登录子域，确保 login.taobao.com 也有登录态
+  const domains = dom.startsWith(".") ? [dom, dom.slice(1), "login." + dom.slice(1)] : [dom, "." + dom, "login." + dom];
+  const uniqDomains = [...new Set(domains)];
+  return String(raw || "").split(";").map((p) => p.trim()).filter(Boolean).flatMap((pair) => {
     const idx = pair.indexOf("=");
-    if (idx === -1) return null;
-    return {
+    if (idx === -1) return [];
+    const item = {
       name: pair.slice(0, idx),
       value: pair.slice(idx + 1),
-      domain: ".taobao.com",
       path: "/",
       secure: true,
       httpOnly: false,
       sameSite: "Lax",
     };
-  }).filter(Boolean);
+    return uniqDomains.map((d) => ({ ...item, domain: d }));
+  });
 }
 
-async function importCookies(cookieString) {
-  const cookies = parseCookieString(cookieString);
+async function importCookies(cookieString, domain) {
+  const cookies = parseCookieString(cookieString, domain);
   if (!cookies.length) throw new Error("cookie 字符串解析出 0 条，请检查格式");
   try {
     const bak = await readFile(sessionCookiesPath, "utf8");
@@ -262,7 +269,7 @@ async function importCookies(cookieString) {
   try { await (await import("node:fs/promises")).chmod(sessionCookiesPath, 0o600); } catch {}
   const names = cookies.map((c) => c.name);
   const must = ["_m_h5_tk", "cookie2", "t", "unb", "_tb_token_", "cna"];
-  const missing = must.filter((k) => !names.includes(k));
+  const missing = domain ? [] : must.filter((k) => !names.includes(k));
   return { count: cookies.length, names, missing };
 }
 
@@ -275,6 +282,127 @@ async function deleteRun(runId) {
   await rm(dir, { recursive: true, force: true });
   return { runId, deleted: true };
 }
+
+async function listCrawlRuns() {
+  try {
+    const entries = await readdir(crawlRunsDir, { withFileTypes: true });
+    const runs = [];
+    for (const e of entries) {
+      if (!e.isDirectory()) continue;
+      const dir = path.join(crawlRunsDir, e.name);
+      let result = null;
+      try { result = JSON.parse(await readFile(path.join(dir, "crawl-result.json"), "utf8")); } catch {}
+      const meta = result ? {
+        runId: e.name,
+        searchName: result.searchName || "",
+        websiteUrl: result.websiteUrl || "",
+        pageCount: result.pageCount || 0,
+        captchaCount: result.captchaCount || 0,
+        autoPassed: result.autoPassed,
+        status: result.error ? "failed" : "done",
+        costMs: result.costMs || 0,
+        finishedAt: result.finishedAt || "",
+      } : { runId: e.name, status: "running", searchName: "", websiteUrl: "", pageCount: 0, captchaCount: 0, autoPassed: null, costMs: 0, finishedAt: "" };
+      runs.push({ ...meta, hasResult: Boolean(result) });
+    }
+    runs.sort((a, b) => (b.finishedAt || b.runId).localeCompare(a.finishedAt || a.runId));
+    return runs;
+  } catch { return []; }
+}
+
+async function getCrawlResults(runId) {
+  if (!runId || /[\/]/.test(runId) || runId.includes("..")) return null;
+  const dir = path.join(crawlRunsDir, runId);
+  try { await access(dir); } catch { return null; }
+  try { return JSON.parse(await readFile(path.join(dir, "crawl-result.json"), "utf8")); }
+  catch { return { runId, status: "running" }; }
+}
+
+async function deleteCrawlRun(runId) {
+  if (!runId || /[\/]/.test(runId) || runId.includes("..")) {
+    throw new Error("invalid runId");
+  }
+  const dir = path.join(crawlRunsDir, runId);
+  try { await access(dir); } catch { return { runId, deleted: false, reason: "not found" }; }
+  await rm(dir, { recursive: true, force: true });
+  return { runId, deleted: true };
+}
+
+async function handleCrawlRun(req, res, body) {
+  let payload;
+  try { payload = JSON.parse(body); } catch { return sendJson(res, 400, { error: "invalid json" }); }
+  const { websiteUrl, searchName, imageUrl, pageCount, dwellMinMs, dwellMaxMs, humanScroll, crawlPageInfo, headless, timeout, keepBrowserOpen } = payload;
+  if (!websiteUrl || !/^https?:\/\//i.test(websiteUrl)) {
+    return sendJson(res, 400, { error: "请输入有效的网站链接 (http/https)" });
+  }
+
+  const runId = new Date().toISOString().replace(/[:.]/g, "-");
+  const runOutDir = path.join(crawlRunsDir, runId);
+  await mkdir(runOutDir, { recursive: true });
+
+  let imagePath = "";
+  if (imageUrl) {
+    if (imageUrl.startsWith("/images/")) imagePath = path.join(imagesDir, decodeURIComponent(imageUrl.replace(/^\/images\//, "")));
+    else if (imageUrl.startsWith("/uploads/")) imagePath = path.join(uploadsDir, decodeURIComponent(imageUrl.replace(/^\/uploads\//, "")));
+    else imagePath = path.resolve(imageUrl);
+    try { await access(imagePath); } catch { return sendJson(res, 400, { error: "图搜图片不存在: " + imagePath }); }
+  }
+
+  const config = {
+    websiteUrl, searchName: searchName || "",
+    imageUrl: imagePath || "",
+    pageCount: Math.max(1, Number(pageCount) || 1),
+    dwellMinMs: Math.max(800, Number(dwellMinMs) || 1000),
+    dwellMaxMs: Math.max(Number(dwellMinMs) || 1000, Number(dwellMaxMs) || 3000),
+    humanScroll: Boolean(humanScroll),
+    crawlPageInfo: Boolean(crawlPageInfo),
+    headless: Boolean(headless),
+    timeout: Number(timeout) || 300000,
+    keepBrowserOpen: Boolean(keepBrowserOpen),
+    profileDir: path.join(projectRoot, "profile"),
+    sessionCookiesPath,
+    mcpServerUrl: process.env.MCP_SERVER_URL || "http://127.0.0.1:9000/mcp",
+    cdpEndpoint: process.env.CDP_ENDPOINT || "http://127.0.0.1:19222",
+    mcpPython: process.env.MCP_PYTHON || "/opt/anaconda3/envs/yolo/bin/python",
+    mcpClientScript: process.env.MCP_CLIENT_SCRIPT || path.join(__dirname, "mcp_client.py"),
+    cdpDebugPort: process.env.CDP_DEBUG_PORT || 9222,
+  };
+  const configPath = path.join(runOutDir, "crawl-config.json");
+  await writeFile(configPath, JSON.stringify(config, null, 2), "utf8");
+
+  const args = ["--config", configPath, "--out", runOutDir];
+  const child = spawn("node", [crawlScript, ...args], { cwd: projectRoot });
+
+  res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "X-Accel-Buffering": "no" });
+  const writeLine = (obj) => res.write(JSON.stringify(obj) + "\n");
+  writeLine({ type: "start", runId, websiteUrl, searchName: searchName || "", pageCount: config.pageCount });
+
+  let stdoutBuf = "";
+  child.stdout.on("data", (chunk) => {
+    stdoutBuf += chunk.toString();
+    const lines = stdoutBuf.split(/\r?\n/);
+    stdoutBuf = lines.pop();
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try { const ev = JSON.parse(line); writeLine(ev); }
+      catch { writeLine({ type: "log", line, stream: "stdout" }); }
+    }
+  });
+  let stderrBuf = "";
+  child.stderr.on("data", (chunk) => {
+    stderrBuf += chunk.toString();
+    const lines = stderrBuf.split(/\r?\n/);
+    stderrBuf = lines.pop();
+    for (const line of lines) writeLine({ type: "log", line, stream: "stderr" });
+  });
+
+  child.on("close", async () => {
+    const results = await getCrawlResults(runId);
+    writeLine({ type: "done", runId, status: results?.error ? "failed" : "done", result: results });
+    res.end();
+  });
+}
+
 
 function buildRunArgs({ imagePath, runOutDir, params }) {
   const args = ["--image", imagePath, "--out", runOutDir];
@@ -363,6 +491,8 @@ async function serveStatic(req, res, urlPath) {
     filePath = path.join(uploadsDir, decodeURIComponent(urlPath.replace(/^\/uploads\//, "")));
   } else if (urlPath === "/batch.html" || urlPath === "/analyze.html") {
     filePath = path.join(__dirname, urlPath.slice(1));
+  } else if (urlPath === "/crawl.html") {
+    filePath = path.join(__dirname, "crawl.html");
   } else {
     return send(res, 404, "text/plain", "not found");
   }
@@ -406,11 +536,42 @@ const server = http.createServer(async (req, res) => {
     }
     if (p === "/api/upload" && req.method === "POST") return handleUpload(req, res, await readBody(req));
     if (p === "/api/run" && req.method === "POST") return handleRun(req, res, await readBody(req));
+    if (p === "/api/crawl-runs") return sendJson(res, 200, { runs: await listCrawlRuns() });
+    if (p === "/api/mcp-config") {
+      const mcpServerUrl = process.env.MCP_SERVER_URL || "http://127.0.0.1:9000/mcp";
+      return sendJson(res, 200, {
+        enabled: Boolean(mcpServerUrl),
+        mcpServerUrl,
+        cdpEndpoint: process.env.CDP_ENDPOINT || "",
+        mcpPython: process.env.MCP_PYTHON || "/opt/anaconda3/envs/yolo/bin/python",
+        mcpClientScript: process.env.MCP_CLIENT_SCRIPT || path.join(__dirname, "mcp_client.py"),
+        cdpDebugPort: process.env.CDP_DEBUG_PORT || 9222,
+      });
+    }
+    if (p === "/api/crawl-results" && url.searchParams.get("runId")) {
+      const r = await getCrawlResults(url.searchParams.get("runId"));
+      return r ? sendJson(res, 200, r) : sendJson(res, 404, { error: "run not found" });
+    }
+    if (p === "/api/crawl" && req.method === "POST") return handleCrawlRun(req, res, await readBody(req));
+    if (p.startsWith("/api/crawl-runs/") && req.method === "DELETE") {
+      const runId = decodeURIComponent(p.replace(/^\/api\/crawl-runs\//, ""));
+      try { return sendJson(res, 200, await deleteCrawlRun(runId)); }
+      catch (e) { return sendJson(res, 400, { error: e.message }); }
+    }
     if (p === "/api/cookies" && req.method === "POST") {
       let payload;
       try { payload = JSON.parse(await readBody(req)); } catch { return sendJson(res, 400, { error: "invalid json" }); }
-      try { return sendJson(res, 200, await importCookies(payload.cookie || "")); }
+      try { return sendJson(res, 200, await importCookies(payload.cookie || "", payload.domain)); }
       catch (e) { return sendJson(res, 400, { error: e.message }); }
+    }
+    if (p === "/api/cookies" && req.method === "GET") {
+      try {
+        const raw = await readFile(sessionCookiesPath, "utf8");
+        const arr = JSON.parse(raw);
+        const names = (Array.isArray(arr) ? arr : []).map((c) => c.name);
+        const must = ["_m_h5_tk", "cookie2", "t", "unb", "_tb_token_", "cna"];
+        return sendJson(res, 200, { count: arr.length, names, missing: must.filter((k) => !names.includes(k)), saved: arr.length > 0 });
+      } catch { return sendJson(res, 200, { count: 0, names: [], missing: [], saved: false }); }
     }
     if (p.startsWith("/api/runs/") && req.method === "DELETE") {
       const runId = decodeURIComponent(p.replace(/^\/api\/runs\//, ""));

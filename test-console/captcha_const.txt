@@ -1,0 +1,67 @@
+
+# 验证码容器/背景元素选择器（按优先级排序，越靠前越精确）
+# 统一一份常量，供 _find_captcha_region_box / _screenshot_puzzle_bg / search_captcha_elements 复用
+CAPTCHA_CONTAINER: list[str] = [
+    # 第一优先级：实际的验证码图片 / 拼图背景（最精确）
+    '#puzzle-captcha-question-img',
+    '.puzzle-captcha-question-bg',
+    '.puzzle-captcha-puzzle',
+    '.slider-img-bg',
+    '[class*="slider-img"]',
+    # 第二优先级：puzzle 容器
+    '.puzzle-board',
+    '[class*="puzzle-board"]',
+    '[class*="puzzle"][class*="bg"]',
+    # 第三优先级：NC 滑块相关
+    '.nc_scale',
+    '.nc_iconfont',
+    '.btn_slide',
+    '#nc_1_wrapper',
+    '[class*="captcha-bg"]',
+    # 第四优先级：验证码 iframe（跨域 iframe 指不到内部 DOM，但能抓到位置用于截图）
+    'iframe[src*="gtimg"]',
+    'iframe[src*="captcha"]',
+    'iframe[src*="nc"]',
+    # 第五优先级：通用 dialog 容器（放最后避免抢全屏遮罩）
+    '[class*="captcha-dialog"]',
+    '[class*="captcha-tips"]',
+    '[class*="dialog"]',
+    '[class*="nc_"]',
+]
+
+# 刮刮乐涂层选择器（独立分类，search_captcha_elements / _find_scratch_surface 用）
+SCRATCH_SELECTORS: list[str] = [
+    'canvas[class*="scratcher"]', '[class*="scratch"]', '[class*="刮刮"]',
+    '#scratch-card', '.captcha-scratch', '.scratch-card', 'canvas',
+]
+
+
+def _captcha_selector_kind(sel: str) -> str:
+    """根据选择器推断验证码元素类型，决定区域裁剪策略。"""
+    s = sel.lower()
+    if sel.startswith('iframe'):
+        return 'iframe'
+    if 'puzzle' in s and ('img' in s or 'bg' in s or 'question' in s) or 'slider-img' in s or 'captcha-bg' in s:
+        return 'bg'
+    if 'puzzle' in s or 'board' in s:
+        return 'puzzle'
+    if 'nc' in s or 'btn_slide' in s or 'scale' in s or 'iconfont' in s:
+        return 'slider'
+    if 'dialog' in s or 'tips' in s:
+        return 'dialog'
+    if 'scratch' in s or '刮刮' in s or 'scratcher' in s or 'canvas' in s:
+        return 'scratch'
+    return 'container'
+
+
+def _captcha_region_from_box(bb: dict, kind: str) -> Optional[Tuple[int, int, int, int]]:
+    """根据元素类型计算验证码裁剪区域。
+    bg/puzzle/iframe/dialog：元素本身就是验证码区域，小幅外扩；
+    slider：拼图/缺口在滑块上方，向上扩展以纳入背景图。"""
+    if not bb:
+        return None
+    x, y, w, h = bb['x'], bb['y'], bb['width'], bb['height']
+    if kind in ('bg', 'puzzle', 'iframe', 'dialog', 'container'):
+        return (max(int(x - 15), 0), max(int(y - 15), 0), int(x + w + 15), int(y + h + 15))
+    # slider：缺口在上方，向上扩展
+    return (max(int(x - 30), 0), max(int(y - 300), 0), int(x + w + 40), int(y + h + 25))

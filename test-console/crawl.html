@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>网站巡检台</title>
+<style>
+:root{--bg:#0f1419;--panel:#1a1f2e;--panel2:#232938;--border:#2d3548;--text:#e4e6eb;--dim:#8b93a7;--accent:#4dd0e1;--green:#66bb6a;--orange:#ffa726;--red:#ef5350;--blue:#42a5f5;--purple:#ab47bc}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+.head-tabs{display:flex;gap:1px;background:var(--border);border-bottom:1px solid var(--border)}
+.head-tabs .nav{flex:1;padding:14px 20px;text-align:center;cursor:pointer;background:var(--panel);font-size:14px;font-weight:600;color:var(--dim);text-decoration:none;border-bottom:2px solid transparent;transition:.15s}
+.head-tabs .nav:hover{color:var(--text)}
+.head-tabs .nav.active{color:var(--accent);border-bottom-color:var(--accent);background:var(--bg)}
+.header{background:linear-gradient(135deg,#1a1f2e,#232938);padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.header h1{font-size:18px;font-weight:600}.header h1 span{color:var(--accent)}
+.header .note{color:var(--dim);font-size:12px}
+.dashboard{display:flex;gap:1px;background:var(--border);border-bottom:1px solid var(--border);align-items:stretch}
+.dash-numbers{display:flex;flex:1;background:var(--panel)}
+.dash-numbers .stat{flex:1;padding:14px 10px;text-align:center;display:flex;flex-direction:column;justify-content:center;border-right:1px solid var(--border)}
+.dash-numbers .stat:last-child{border-right:none}
+.dash-numbers .num{font-size:26px;font-weight:700;line-height:1.1}
+.dash-numbers .lbl{font-size:11px;color:var(--dim);margin-top:3px}
+.stat.pages .num{color:var(--blue)}.stat.cap .num{color:var(--orange)}.stat.passed .num{color:var(--green)}.stat.rate .num{color:var(--accent)}
+.dash-chart{width:230px;min-width:230px;background:var(--panel);padding:12px;display:flex;align-items:center;gap:14px;border-left:1px solid var(--border)}
+.pie-wrap{position:relative;width:96px;height:96px;flex-shrink:0}
+.pie-wrap svg{width:100%;height:100%;transform:rotate(-90deg)}
+.pie-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.pie-center .pct{font-size:18px;font-weight:700;color:var(--accent)}
+.pie-center .pct-lbl{font-size:9px;color:var(--dim)}
+.legend{display:flex;flex-direction:column;gap:5px}
+.legend .li{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dim)}
+.legend .dot{width:9px;height:9px;border-radius:2px;flex-shrink:0}
+.legend .li b{color:var(--text);font-weight:600}
+.toolbar{display:flex;gap:8px;align-items:center;padding:12px 20px;background:var(--panel);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.toolbar .btn{padding:7px 14px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;color:var(--text);cursor:pointer;font-size:13px}
+.toolbar .btn:hover{border-color:var(--accent)}
+.toolbar .btn.primary{background:var(--accent);color:#000;border-color:var(--accent);font-weight:600}
+.toolbar .btn:disabled{opacity:.5;cursor:not-allowed}
+.toolbar .sep{width:1px;height:24px;background:var(--border);margin:0 4px}
+.toolbar .progress{font-size:13px;color:var(--dim)}
+.tabs{display:flex;gap:4px}
+.tab{padding:5px 12px;background:var(--panel2);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:12px}
+.tab.active{background:var(--accent);color:#000;border-color:var(--accent)}
+.log-panel{background:var(--panel);border-bottom:1px solid var(--border);display:flex;flex-direction:column;max-height:200px;transition:max-height .3s}
+.log-panel.collapsed{max-height:32px}
+.log-head{display:flex;align-items:center;justify-content:space-between;padding:6px 14px;cursor:pointer;background:var(--panel2);border-bottom:1px solid var(--border);font-size:12px;flex-shrink:0}
+.log-head:hover{color:var(--accent)}
+.log-head .arrow{transition:transform .2s;color:var(--dim)}
+.log-panel.collapsed .arrow{transform:rotate(-90deg)}
+.log-body{flex:1;overflow-y:auto;background:#0a0d14;padding:8px 12px;font-family:"SF Mono",Menlo,monospace;font-size:11px;line-height:1.6;color:#a0aabf;min-height:0}
+.log-body::-webkit-scrollbar{width:6px}.log-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.log-line{white-space:pre-wrap;word-break:break-all}
+.log-line.err{color:var(--red)}
+.log-line.cap{color:var(--orange)}
+.log-line.ok{color:var(--green)}
+.layout{display:grid;grid-template-columns:320px 1fr;height:calc(100vh - 250px);min-height:300px}
+.sidebar{background:var(--panel);border-right:1px solid var(--border);overflow-y:auto;padding:14px}
+.sidebar h3{font-size:12px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;margin-top:14px}
+.sidebar h3:first-child{margin-top:0}
+.field{margin-bottom:10px}
+.field label{display:block;font-size:12px;color:var(--dim);margin-bottom:4px}
+.field input,.field select,.field textarea{width:100%;background:var(--panel2);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:6px 8px;font-size:13px}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--accent)}
+.field textarea{resize:vertical;font-family:inherit}
+.range2{display:flex;gap:6px;align-items:center}
+.range2 input{flex:1}
+.range2 .dash{color:var(--dim)}
+.check{display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:6px;cursor:pointer}
+.check input{accent-color:var(--accent)}
+.img-pick{display:grid;grid-template-columns:repeat(auto-fill,minmax(48px,1fr));gap:5px;margin-bottom:10px;max-height:160px;overflow-y:auto;padding:2px}
+.img-pick .ip{position:relative;aspect-ratio:1;border:2px solid var(--border);border-radius:4px;overflow:hidden;cursor:pointer}
+.img-pick .ip img{width:100%;height:100%;object-fit:cover}
+.img-pick .ip.checked{border-color:var(--accent)}
+.img-pick .ip .chk{position:absolute;top:2px;right:2px;width:16px;height:16px;border-radius:50%;background:var(--accent);color:#000;font-size:10px;display:flex;align-items:center;justify-content:center}
+.upload-btn{display:block;padding:9px;margin-bottom:10px;background:var(--panel2);border:1px dashed var(--border);border-radius:6px;color:var(--dim);text-align:center;cursor:pointer;font-size:12px}
+.upload-btn:hover{border-color:var(--accent);color:var(--accent)}
+.upload-btn input{display:none}
+.main{overflow-y:auto;padding:18px}
+.empty{text-align:center;color:var(--dim);padding:60px 20px}
+.empty .ico{font-size:40px;margin-bottom:10px}
+.run-card{background:var(--panel);border:1px solid var(--border);border-radius:10px;margin-bottom:16px;overflow:hidden}
+.run-card.failed{border-left:3px solid var(--red)}
+.run-card.passed{border-left:3px solid var(--green)}
+.run-card.nocap{border-left:3px solid var(--blue)}
+.rc-head{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--panel2);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.rc-head .name{font-weight:600;font-size:13px}
+.rc-head .url{font-size:11px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:300px}
+.rc-head .badge{font-size:11px;padding:2px 8px;border-radius:10px;white-space:nowrap}
+.badge.passed{background:rgba(102,187,106,.2);color:var(--green)}
+.badge.failed{background:rgba(239,83,80,.15);color:var(--red)}
+.badge.nocap{background:rgba(66,165,245,.15);color:var(--blue)}
+.rc-head .when{font-size:11px;color:var(--dim);margin-left:auto}
+.rc-head .rc-del{cursor:pointer;color:var(--dim);font-size:14px;padding:2px 8px;border-radius:4px;flex-shrink:0;border:1px solid transparent}
+.rc-head .rc-del:hover{color:var(--red);background:rgba(239,83,80,.15);border-color:rgba(239,83,80,.3)}
+.rc-body{padding:14px;display:grid;grid-template-columns:1fr 230px;gap:16px}
+.metrics-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.metric{background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:8px 10px}
+.metric .k{font-size:11px;color:var(--dim);margin-bottom:3px}
+.metric .v{font-size:13px;font-weight:600}
+.metric .v.accent{color:var(--accent)}.metric .v.green{color:var(--green)}.metric .v.orange{color:var(--orange)}.metric .v.blue{color:var(--blue)}
+.cap-chart{background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:10px}
+.cap-chart .title{font-size:11px;color:var(--dim);margin-bottom:8px}
+.bar-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:11px}
+.bar-row .lab{width:70px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar-row .bar-track{flex:1;height:14px;background:var(--bg);border-radius:3px;overflow:hidden}
+.bar-row .bar{height:100%;border-radius:3px;transition:width .3s}
+.bar-row .num{width:20px;text-align:right;color:var(--text);font-weight:600}
+.crawl-list{grid-column:1/-1;margin-top:8px}
+.crawl-list .title{font-size:11px;color:var(--dim);margin-bottom:6px}
+.crawl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
+.crawl-item{background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:11px}
+.crawl-item .ci-t{font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.crawl-item .ci-u{color:var(--accent);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.crawl-item .ci-s{color:var(--dim)}
+.history-list{max-height:420px;overflow-y:auto}
+.history-list::-webkit-scrollbar{width:6px}
+.history-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.history-list .hl{display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:4px;cursor:pointer;font-size:12px;justify-content:space-between}
+.history-list .hl:hover{background:var(--panel2)}
+.history-list .hl .del{color:var(--red);opacity:0;cursor:pointer;font-size:13px;padding:2px 6px;border-radius:3px}
+.history-list .hl:hover .del{opacity:.7}
+.history-list .hl .del:hover{opacity:1;background:rgba(239,83,80,.15)}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;z-index:9999}
+.modal{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:20px;width:560px;max-width:90vw;max-height:80vh;display:flex;flex-direction:column;gap:12px}
+.modal h3{font-size:15px;font-weight:600}
+.modal textarea{width:100%;height:160px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:10px;font-family:monospace;font-size:12px;resize:vertical}
+.modal textarea:focus{outline:none;border-color:var(--accent)}
+.modal .actions{display:flex;gap:8px;justify-content:flex-end}
+.modal .actions .btn{padding:7px 16px}
+.modal .result{font-size:12px;color:var(--dim);max-height:120px;overflow-y:auto}
+.modal .result .ok{color:var(--green)}.modal .result .warn{color:var(--orange)}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="head-tabs">
+  <a class="nav" href="/">🛒 比价评测台</a>
+  <a class="nav active" href="/crawl.html">🌐 网站巡检台</a>
+  <a class="nav" href="/analyze.html">📊 离线分析</a>
+</div>
+<div class="header">
+  <h1>网站巡检 <span>自动化台</span></h1>
+  <div class="note">自定义网站 · 翻页/爬虫 · 拟人滑动 · 验证码自动通过</div>
+</div>
+<div class="dashboard">
+  <div class="dash-numbers">
+    <div class="stat pages"><div class="num" id="stPages">0</div><div class="lbl">巡检页数</div></div>
+    <div class="stat cap"><div class="num" id="stCap">0</div><div class="lbl">验证码次数</div></div>
+    <div class="stat passed"><div class="num" id="stPassed">0</div><div class="lbl">自动通过</div></div>
+    <div class="stat rate"><div class="num" id="stRate">—</div><div class="lbl">自动通过率</div></div>
+  </div>
+  <div class="dash-chart">
+    <div class="pie-wrap">
+      <svg id="pieSvg" viewBox="0 0 36 36"></svg>
+      <div class="pie-center"><div class="pct" id="piePct">—</div><div class="pct-lbl">通过率</div></div>
+    </div>
+    <div class="legend" id="pieLegend"></div>
+  </div>
+</div>
+<div class="toolbar">
+  <button class="btn primary" id="runBtn" onclick="startCrawl()">▶ 开始巡检</button>
+  <button class="btn" onclick="loadHistory()">刷新历史</button>
+  <div class="sep"></div>
+  <div class="tabs">
+    <span class="tab active" onclick="setFilter(this,'all')">全部</span>
+    <span class="tab" onclick="setFilter(this,'passed')">已自动通过</span>
+    <span class="tab" onclick="setFilter(this,'failed')">未通过</span>
+    <span class="tab" onclick="setFilter(this,'nocap')">无验证码</span>
+  </div>
+  <div class="sep"></div>
+  <button class="btn" onclick="exportRuns()">导出报告</button>
+  <button class="btn" onclick="deleteAllRuns()" style="color:var(--red)">清空全部</button>
+  <span class="progress" id="progress"></span>
+</div>
+<div class="log-panel" id="logPanel">
+  <div class="log-head" onclick="toggleLog()">
+    <span><span class="arrow">▼</span> 运行日志 <span id="logCount" style="color:var(--dim)"></span></span>
+    <button class="btn" style="padding:2px 8px;font-size:11px" onclick="event.stopPropagation();clearLog()">清空</button>
+  </div>
+  <div class="log-body" id="logBody"></div>
+</div>
+<div class="layout">
+  <div class="sidebar">
+    <h3>巡检配置</h3>
+    <div class="field" id="mcpStatus" style="font-size:12px;color:var(--dim);margin-bottom:10px;padding:6px 8px;background:var(--panel2);border:1px solid var(--border);border-radius:5px">验证码自动解决：检测中…</div>
+    <div class="field">
+      <label>网站链接 *</label>
+      <input type="text" id="websiteUrl" placeholder="https://s.taobao.com/search?q=手机">
+    </div>
+    <div class="field">
+      <label>搜索名称（关键词搜索 / 留空仅巡检）</label>
+      <input type="text" id="searchName" placeholder="如：手机壳 / 短袖T恤">
+    </div>
+    <div class="collapse-head" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:6px 8px;background:var(--panel2);border:1px solid var(--border);border-radius:5px;margin-bottom:8px;font-size:12px" onclick="toggleImgPick()">
+      <span>图搜（可选，上传图片自动搜索）</span><span class="arrow" id="imgPickArrow">▶</span>
+    </div>
+    <div id="imgPickWrap" style="display:none">
+      <div class="img-pick" id="imgPick"></div>
+      <label class="upload-btn">＋ 上传图片
+        <input type="file" id="fileInput" accept="image/*" multiple style="display:none">
+      </label>
+      <div style="font-size:11px;color:var(--dim);margin-bottom:8px">选中图片后将以图搜方式优先于关键词</div>
+    </div>
+    <div class="field">
+      <label>翻页数量</label>
+      <input type="number" id="pageCount" value="3" min="1" max="50" step="1">
+    </div>
+    <div class="field">
+      <label>页面停留时间（毫秒，范围内随机）</label>
+      <div class="range2">
+        <input type="number" id="dwellMin" value="1000" min="800" step="500"><span class="dash">~</span><input type="number" id="dwellMax" value="3000" min="800" step="500">
+      </div>
+    </div>
+    <div class="check"><input type="checkbox" id="humanScroll" checked> 上下滑动拟人操作</div>
+    <div class="check"><input type="checkbox" id="crawlPageInfo" checked> 爬取页面信息（标题/链接/图片）</div>
+    <div class="check"><input type="checkbox" id="headless"> 无头模式（不推荐首次登录）</div>
+    <div class="field"><label>单次超时（毫秒）</label><input type="number" id="timeout" value="300000" step="10000"></div>
+    <button class="btn" style="width:100%;padding:8px;margin-top:4px" onclick="openCookieModal()">🔑 导入 Cookie（复用浏览器登录态）</button>
+    <div id="cookieStatus" class="result" style="margin-top:4px;font-size:12px">检查本地 cookie…</div>
+    <h3>历史巡检</h3>
+    <div class="history-list" id="histList"></div>
+  </div>
+  <div class="main" id="mainArea">
+    <div class="empty"><div class="ico">🌐</div>填写网站链接和翻页数量后点"开始巡检"，浏览器会自动打开网站、翻页/爬虫、遇到验证码自动调用 mcp-tool 解决，完成后生成图表。<br><br>图表记录：搜索名称、网站链接、翻页频率、拟人操作类型、验证码次数与类型、是否自动通过。</div>
+  </div>
+</div>
+<div class="modal-overlay hidden" id="cookieModal" onclick="if(event.target===this)closeCookieModal()">
+  <div class="modal">
+    <h3>导入 Cookie（复用浏览器登录态）</h3>
+    <div style="font-size:12px;color:var(--dim)">粘贴纯 cookie 字符串（<code>key=val; key=val; ...</code>），写入 session-cookies.json 后浏览器自动加载（旧文件自动备份）。留空域名默认淘宝。</div>
+    <div class="field" style="margin-bottom:6px"><label>Cookie 域名（可选，如 .taobao.com / .jd.com）</label><input type="text" id="cookieDomain" placeholder=".taobao.com"></div>
+    <textarea id="cookieInput" placeholder="isg=xxx; tfstk=yyy; _m_h5_tk=zzz; ..."></textarea>
+    <div class="result" id="cookieResult"></div>
+    <div class="actions">
+      <button class="btn" onclick="closeCookieModal()">取消</button>
+      <button class="btn primary" onclick="submitCookie()">替换</button>
+    </div>
+  </div>
+</div>
+<script>
+let allImages=[], pickedImage=null, runs=[], filter='all', running=false;
+const CAP_COLORS=['#4dd0e1','#ffa726','#ab47bc','#42a5f5','#66bb6a','#ef5350'];
+function $(id){return document.getElementById(id);}
+function esc(s){return String(s??'').replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+function toggleImgPick(){const w=$('imgPickWrap');const shown=w.style.display!=='none';w.style.display=shown?'none':'block';$('imgPickArrow').textContent=shown?'▶':'▼';if(!shown)loadImages();}
+function openCookieModal(){$('cookieModal').classList.remove('hidden');$('cookieInput').focus();}
+function closeCookieModal(){$('cookieModal').classList.add('hidden');$('cookieResult').innerHTML='';$('cookieInput').value='';}
+async function loadCookieStatus(){
+  try{
+    const r=await fetch('/api/cookies').then(r=>r.json());
+    const el=$('cookieStatus');
+    if(r.saved){
+      el.innerHTML='<span class="ok">✓ 本地已保存 '+r.count+' 条 cookie（自动加载，无需手动粘贴）'+(r.missing&&r.missing.length?(' · 缺少: '+r.missing.join(',')):'')+'</span>';
+    }else{
+      el.innerHTML='<span style="color:var(--dim)">未保存 cookie，可点上方按钮导入</span>';
+    }
+  }catch(e){$('cookieStatus').innerHTML='<span style="color:var(--dim)">cookie 状态未知</span>';}
+}
+loadCookieStatus();
+async function submitCookie(){
+  const v=$('cookieInput').value.trim();
+  if(!v){alert('请粘贴 cookie 字符串');return;}
+  const domain=$('cookieDomain').value.trim();
+  const el=$('cookieResult');
+  el.innerHTML='<span style="color:var(--accent)">提交中…</span>';
+  try{
+    const r=await fetch('/api/cookies',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cookie:v,domain:domain||undefined})}).then(r=>r.json());
+    if(r.error){el.innerHTML='<span class="warn">✗ '+r.error+'</span>';return;}
+    let html='<span class="ok">✓ 已写入 '+r.count+' 条 cookie'+(domain?('（域名 '+domain+'）'):'')+'</span>';
+    if(r.missing&&r.missing.length)html+='<br><span class="warn">⚠ 缺少关键字段: '+r.missing.join(', ')+'</span>';
+    else if(!domain)html+='<br><span class="ok">关键字段齐全 ✓</span>';
+    html+='<br><span style="color:var(--dim)">字段: '+r.names.slice(0,12).join(', ')+(r.names.length>12?'…':'')+'</span>';
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<span class="warn">✗ '+e.message+'</span>';}
+}
+function appendLog(line,cls){
+  const body=$('logBody');
+  const div=document.createElement('div');
+  div.className='log-line'+(cls?' '+cls:'');
+  div.textContent=line;
+  body.appendChild(div);
+  body.scrollTop=body.scrollHeight;
+  const cnt=$('logCount');
+  cnt.textContent='('+body.children.length+' 行)';
+}
+function clearLog(){$('logBody').innerHTML='';$('logCount').textContent='';}
+function toggleLog(){$('logPanel').classList.toggle('collapsed');}
+
+async function init(){
+  $('fileInput').addEventListener('change',onUpload);
+  await loadMcpStatus();
+  await loadImages();
+  await loadHistory();
+}
+async function loadMcpStatus(){
+  const el=$('mcpStatus');
+  try{
+    const r=await fetch('/api/mcp-config').then(r=>r.json());
+    if(r.enabled){
+      let html='<span style="color:var(--green)">✓ 验证码自动解决已启用</span><br>';
+      html+='<span style="color:var(--dim)">MCP: '+esc(r.mcpServerUrl)+' · CDP: '+esc(r.cdpEndpoint||'(默认 19222)')+'</span><br>';
+      html+='<span style="color:var(--dim)">client: '+esc(r.mcpPython.split('/').pop())+' '+esc(r.mcpClientScript.split('/').pop())+'</span>';
+      el.innerHTML=html;
+    }else{
+      el.innerHTML='<span style="color:var(--orange)">⚠ 未配置 MCP_SERVER_URL，遇验证码不会自动解决</span><br><span style="color:var(--dim)">启动时设 MCP_SERVER_URL=http://localhost:9000</span>';
+    }
+  }catch(e){el.innerHTML='<span style="color:var(--red)">状态获取失败: '+esc(e.message)+'</span>';}
+}
+async function loadImages(){
+  try{
+    const r=await fetch('/api/images').then(r=>r.json());
+    allImages=[...r.images,...r.uploads];
+  }catch{allImages=[];}
+  renderImgPick();
+}
+async function onUpload(input){
+  const files=input.target.files;
+  if(!files||!files.length)return;
+  for(const file of files){
+    const dataUrl=await new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.onerror=rej;fr.readAsDataURL(file);});
+    const r=await fetch('/api/upload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:file.name,dataUrl})}).then(r=>r.json()).catch(()=>null);
+    if(r&&r.url){allImages.unshift({name:r.name,source:'upload',url:r.url});if(!pickedImage)pickedImage=r.url;}
+    else{alert('上传失败: '+(r?.error||file.name));}
+  }
+  input.target.value='';
+  renderImgPick();
+}
+function renderImgPick(){
+  const el=$('imgPick');
+  if(!allImages.length){el.innerHTML='<div style="grid-column:1/-1;color:var(--dim);font-size:12px">无图片，可上传</div>';return;}
+  el.innerHTML=allImages.map(im=>`<div class="ip ${pickedImage===im.url?'checked':''}" onclick="pickImage('${im.url}')"><img src="${im.url}" loading="lazy">${pickedImage===im.url?'<div class="chk">✓</div>':''}</div>`).join('');
+}
+function pickImage(url){pickedImage=pickedImage===url?null:url;renderImgPick();}
+
+async function loadHistory(){
+  const r=await fetch('/api/crawl-runs').then(r=>r.json());
+  runs=r.runs||[];
+  renderHistoryList();
+  renderAll();
+}
+function renderHistoryList(){
+  $('histList').innerHTML=runs.map(r=>{
+    const badge=r.autoPassed===true?'✓':r.autoPassed===false?'✗':'…';
+    const bcls=r.autoPassed===true?'passed':r.autoPassed===false?'failed':'nocap';
+    return `<div class="hl"><span onclick="loadRun('${r.runId}')">${(r.finishedAt||r.runId).slice(5,16).replace('T',' ')} ${esc(r.searchName||r.websiteUrl||'')} <span class="badge ${bcls}" style="font-size:10px">${badge}</span></span><span class="del" onclick="deleteRun(event,'${r.runId}')">✕</span></div>`;
+  }).join('')||'<div style="color:var(--dim);font-size:11px;padding:4px">暂无</div>';
+}
+async function loadRun(runId){
+  const r=await fetch('/api/crawl-results?runId='+encodeURIComponent(runId)).then(r=>r.json());
+  if(r){
+    const idx=runs.findIndex(x=>x.runId===runId);
+    if(idx>=0)runs[idx]={...runs[idx],...r};
+    else runs.unshift(r);
+    renderAll();
+    const card=document.querySelector('.run-card[data-run="'+runId+'"]');
+    if(card){card.scrollIntoView({behavior:'smooth',block:'center'});card.style.boxShadow='0 0 0 2px var(--accent)';setTimeout(()=>card.style.boxShadow='',1500);}
+  }
+}
+
+async function startCrawl(){
+  if(running){alert('正在运行中');return;}
+  const websiteUrl=$('websiteUrl').value.trim();
+  if(!websiteUrl){alert('请输入网站链接');return;}
+  if(!/^https?:\/\//i.test(websiteUrl)){alert('网站链接需以 http:// 或 https:// 开头');return;}
+  running=true;$('runBtn').disabled=true;
+  const payload={
+    websiteUrl,
+    searchName:$('searchName').value.trim(),
+    imageUrl:pickedImage,
+    pageCount:Number($('pageCount').value)||1,
+    dwellMinMs:Number($('dwellMin').value)||1000,
+    dwellMaxMs:Number($('dwellMax').value)||3000,
+    humanScroll:$('humanScroll').checked,
+    crawlPageInfo:$('crawlPageInfo').checked,
+    headless:$('headless').checked,
+    timeout:Number($('timeout').value)||300000,
+  };
+  $('progress').textContent='启动巡检…';
+  appendLog('▶ 开始巡检: '+websiteUrl+(payload.searchName?(' · 关键词 '+payload.searchName):'')+(payload.imageUrl?' · 图搜':''));
+  try{
+    const runId=await streamRun(payload);
+    await loadHistory();
+    if(runId)await loadRun(runId);
+  }catch(e){appendLog('✗ 启动失败: '+e.message,'err');}
+  running=false;$('runBtn').disabled=false;
+  $('progress').textContent='';
+}
+function streamRun(payload){
+  return new Promise(async(resolve,reject)=>{
+    let runId=null;
+    try{
+      const resp=await fetch('/api/crawl',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      const reader=resp.body.getReader();const dec=new TextDecoder();let buf='';
+      while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});const lines=buf.split('\n');buf=lines.pop();for(const line of lines){if(!line.trim())continue;try{const ev=JSON.parse(line);handleEvent(ev);if(ev.type==='start')runId=ev.runId;if(ev.type==='done')resolve(ev.result?.runId||runId);}catch{}}}
+      resolve(runId);
+    }catch(e){reject(e);}
+  });
+}
+function handleEvent(ev){
+  if(ev.type==='start'){appendLog('▶ 巡检启动 · '+(ev.pageCount||'?')+' 页 · '+ev.websiteUrl);}
+  else if(ev.type==='phase'){appendLog('⚙ 参数: '+(ev.imageSearch?'图搜':'')+(ev.searchName?(' 关键词='+ev.searchName):'')+' '+(ev.pageCount)+'页 停留'+(ev.dwellMin)+'~'+(ev.dwellMax)+'ms '+(ev.humanScroll?'滑动':'无滑动')+(ev.crawlPageInfo?' 爬取':''));}
+  else if(ev.type==='log'){appendLog(ev.line,ev.stream==='stderr'?'err':'');}
+  else if(ev.type==='page'){appendLog('第 '+(ev.page)+' 页 · '+ev.url);}
+  else if(ev.type==='captcha'){const cls=ev.autoSolved?'ok':'cap';appendLog((ev.autoSolved?'✓ 验证码已通过':'⚠ 验证码未通过')+': '+(ev.label||ev.type)+(ev.method?(' · '+ev.method):'')+(ev.reason?(' · '+ev.reason):''),cls);}
+  else if(ev.type==='done'){appendLog((ev.status==='done'?'✓':'✗')+' 巡检完成 status='+ev.status+(ev.result?.error?(' · '+ev.result.error):''),ev.status==='done'?'ok':'err');$('progress').textContent='完成';}
+  else if(ev.type==='fatal'){appendLog('✗ '+ev.message,'err');}
+}
+
+function runClass(r){
+  if(r.error)return 'failed';
+  if(!r.captchaCount)return 'nocap';
+  return r.autoPassed?'passed':'failed';
+}
+function runStatusBadge(r){
+  if(r.error)return '<span class="badge failed">✗ 失败</span>';
+  if(!r.captchaCount)return '<span class="badge nocap">无验证码</span>';
+  return r.autoPassed?'<span class="badge passed">✓ 自动通过</span>':'<span class="badge failed">✗ 未通过</span>';
+}
+function setFilter(tab,f){document.querySelectorAll('.toolbar .tab').forEach(t=>t.classList.remove('active'));tab.classList.add('active');filter=f;renderCards();}
+function renderAll(){renderStats();renderCards();}
+function renderStats(){
+  const withRes=runs.filter(r=>r.captchaCount!==undefined||r.autoPassed!==undefined);
+  const totalPages=withRes.reduce((s,r)=>s+(r.pageCount||0),0);
+  const totalCap=withRes.reduce((s,r)=>s+(r.captchaCount||0),0);
+  const passed=withRes.filter(r=>r.autoPassed===true).length;
+  const failed=withRes.filter(r=>r.autoPassed===false).length;
+  const capRuns=passed+failed;
+  const rate=capRuns?(passed/capRuns*100).toFixed(0):null;
+  $('stPages').textContent=totalPages;
+  $('stCap').textContent=totalCap;
+  $('stPassed').textContent=passed;
+  $('stRate').textContent=rate!==null?rate+'%':'—';
+  $('piePct').textContent=rate!==null?rate+'%':'—';
+  const segs=[{val:passed,color:'#66bb6a',label:'自动通过'},{val:failed,color:'#ef5350',label:'未通过'},{val:withRes.length-capRuns,color:'#42a5f5',label:'无验证码'}].filter(s=>s.val>0);
+  const total=withRes.length;
+  let svgInner='';
+  if(!total)svgInner='<circle cx="18" cy="18" r="15.915" fill="none" stroke="#2d3548" stroke-width="3.5"/>';
+  else if(segs.length===1)svgInner='<circle cx="18" cy="18" r="15.915" fill="none" stroke="'+segs[0].color+'" stroke-width="3.5"/>';
+  else{let offset=25;const c=2*Math.PI*15.915;for(const seg of segs){const pct=seg.val/total;const dash=c*pct;svgInner+='<circle cx="18" cy="18" r="15.915" fill="none" stroke="'+seg.color+'" stroke-width="3.5" stroke-dasharray="'+dash.toFixed(2)+' '+(c-dash).toFixed(2)+'" stroke-dashoffset="'+(-offset).toFixed(2)+'"/>';offset+=dash;}}
+  $('pieSvg').innerHTML=svgInner;
+  $('pieLegend').innerHTML=segs.length?segs.map(seg=>'<div class="li"><span class="dot" style="background:'+seg.color+'"></span>'+seg.label+' <b>'+seg.val+'</b> ('+(total?(seg.val/total*100).toFixed(0):0)+'%)</div>').join(''):'<div class="li" style="color:var(--dim)">暂无数据</div>';
+}
+function renderCards(){
+  const main=$('mainArea');
+  const withRes=runs.filter(r=>r.captchaCount!==undefined||r.autoPassed!==undefined||r.error);
+  if(!withRes.length){main.innerHTML='<div class="empty"><div class="ico">🌐</div>填写网站链接和翻页数量后点"开始巡检"</div>';return;}
+  const visible=withRes.filter(r=>{const cls=runClass(r);return filter==='all'?true:filter===cls;});
+  main.innerHTML=visible.length?visible.map(r=>runCard(r)).join(''):'<div class="empty">该筛选条件下无记录</div>';
+}
+function runCard(r){
+  const cls=runClass(r);
+  const capTypes=r.captchaTypes||{};
+  const capEntries=Object.entries(capTypes);
+  const maxCap=Math.max(1,...capEntries.map(([,v])=>v));
+  const capBars=capEntries.length?capEntries.map(([k,v],i)=>`<div class="bar-row"><span class="lab" title="${esc(k)}">${esc(k)}</span><div class="bar-track"><div class="bar" style="width:${(v/maxCap*100).toFixed(0)}%;background:${CAP_COLORS[i%CAP_COLORS.length]}"></div></div><span class="num">${v}</span></div>`).join(''):'<div class="bar-row"><span class="lab">无</span><div class="bar-track"></div><span class="num">0</span></div>';
+  const crawlList=(r.crawlPageInfo&&r.crawledPages&&r.crawledPages.length)?`<div class="crawl-list"><div class="title">爬取页面信息（${r.crawledPages.length} 页）</div><div class="crawl-grid">${r.crawledPages.slice(0,12).map(p=>`<div class="crawl-item"><div class="ci-t" title="${esc(p.title)}">P${p.page} · ${esc(p.title||'无标题')}</div><div class="ci-u" title="${esc(p.url)}">${esc(p.url)}</div><div class="ci-s">${p.linkCount||0}链接 · ${p.imgCount||0}图</div></div>`).join('')}</div></div>`:'';
+  const capDetail=r.captchas&&r.captchas.length?r.captchas.map(c=>`P${c.page} ${esc(c.label||c.type)} ${c.autoSolved?'✓':'✗'}`).join('， '):'—';
+  return `<div class="run-card ${cls}" data-run="${esc(r.runId)}">
+    <div class="rc-head">
+      <span class="name">${esc(r.searchName||'(未命名)')}</span>
+      <span class="url" title="${esc(r.websiteUrl)}">${esc(r.websiteUrl)}</span>
+      ${runStatusBadge(r)}
+      <span class="when">${esc((r.finishedAt||r.runId).slice(5,16).replace('T',' '))}</span>
+      <span class="rc-del" onclick="deleteRun(event,'${esc(r.runId)}')" title="删除此记录">✕</span>
+    </div>
+    <div class="rc-body">
+      <div class="metrics-grid">
+        <div class="metric"><div class="k">搜索名称</div><div class="v">${esc(r.searchName||'—')}</div></div>
+        <div class="metric"><div class="k">网站链接</div><div class="v accent" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.websiteUrl)}">${esc(r.websiteUrl||'—')}</div></div>
+        <div class="metric"><div class="k">翻页频率</div><div class="v blue">${esc(r.pageTurnFrequency||((r.pageCount||0)+'页'))}</div></div>
+        <div class="metric"><div class="k">拟人操作类型</div><div class="v">${esc(r.humanOpType||(r.humanScroll?'上下滑动':'无'))}</div></div>
+        <div class="metric"><div class="k">验证码次数</div><div class="v orange">${r.captchaCount||0}</div></div>
+        <div class="metric"><div class="k">验证码类型</div><div class="v" style="font-size:11px">${capEntries.length?capEntries.map(([k,v])=>esc(k)+'×'+v).join(' '):'无'}</div></div>
+        <div class="metric"><div class="k">是否自动通过</div><div class="v ${r.autoPassed?'green':(r.captchaCount?'orange':'blue')}">${r.captchaCount?(r.autoPassed?'✓ 通过':'✗ 未通过'):'无需验证'}</div></div>
+        <div class="metric"><div class="k">耗时</div><div class="v">${r.costMs?(r.costMs/1000).toFixed(1)+'s':'—'}</div></div>
+        <div class="metric" style="grid-column:1/-1"><div class="k">验证码详情</div><div class="v" style="font-size:11px;font-weight:400">${capDetail}</div></div>
+      </div>
+      <div class="cap-chart">
+        <div class="title">验证码类型分布</div>
+        ${capBars}
+      </div>
+      ${crawlList}
+    </div>
+  </div>`;
+}
+async function deleteRun(e,runId){
+  if(e)e.stopPropagation();
+  if(!confirm('确定删除此巡检记录？此操作不可恢复。'))return;
+  try{
+    const r=await fetch('/api/crawl-runs/'+encodeURIComponent(runId),{method:'DELETE'}).then(r=>r.json());
+    if(r.deleted){const i=runs.findIndex(x=>x.runId===runId);if(i>=0)runs.splice(i,1);renderAll();renderHistoryList();}
+    else{alert('删除失败: '+(r.reason||'未知'));}
+  }catch(err){alert('删除失败: '+err.message);}
+}
+async function deleteAllRuns(){
+  if(!runs.length){alert('无历史记录');return;}
+  if(!confirm('确定清空全部 '+runs.length+' 条巡检记录？此操作不可恢复。'))return;
+  let ok=0,fail=0;
+  for(const r of [...runs]){
+    try{const rr=await fetch('/api/crawl-runs/'+encodeURIComponent(r.runId),{method:'DELETE'}).then(r=>r.json());if(rr.deleted)ok++;else fail++;}
+    catch{fail++;}
+  }
+  runs=[];renderAll();renderHistoryList();
+  alert('已删除 '+ok+' 条'+(fail?('，失败 '+fail+' 条'):''));
+}
+function exportRuns(){
+  const withRes=runs.filter(r=>r.captchaCount!==undefined||r.autoPassed!==undefined||r.error);
+  if(!withRes.length){alert('无数据');return;}
+  const data=withRes.map(r=>({searchName:r.searchName,websiteUrl:r.websiteUrl,pageTurnFrequency:r.pageTurnFrequency,humanOpType:r.humanOpType,captchaCount:r.captchaCount||0,captchaTypes:r.captchaTypes||{},autoPassed:r.autoPassed,captchas:r.captchas||[],crawledPages:(r.crawledPages||[]).map(p=>({page:p.page,title:p.title,url:p.url,linkCount:p.linkCount,imgCount:p.imgCount})),costMs:r.costMs,finishedAt:r.finishedAt}));
+  const blob=new Blob([JSON.stringify({summary:{total:withRes.length,passed:withRes.filter(r=>r.autoPassed===true).length,captchaEncountered:withRes.filter(r=>(r.captchaCount||0)>0).length},runs:data},null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='crawl-report-'+Date.now()+'.json';a.click();
+}
+init();
+</script>
+</body>
+</html>

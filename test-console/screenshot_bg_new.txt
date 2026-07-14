@@ -1,0 +1,44 @@
+async def _screenshot_puzzle_bg(page) -> Optional[Tuple[str, float]]:
+    """截取拼图背景图，供 YOLO 使用。返回 (图片路径, CSS宽度)。
+    优先用 CAPTCHA_CONTAINER 中的背景/拼图类选择器（bg/puzzle）。"""
+    bg_selectors = [s for s in CAPTCHA_CONTAINER if _captcha_selector_kind(s) in ('bg', 'puzzle')]
+    for bg_sel in bg_selectors:
+        try:
+            el, _ = await _find_element_all_frames(page, bg_sel)
+            if not el:
+                continue
+            css_box = await el.bounding_box()
+            css_w = css_box['width'] if css_box else 0.0
+            path = f"{IMAGES_DIR}/_cs_gap.png"
+            await el.screenshot(path=path)
+            if CV2_AVAILABLE:
+                img = cv2.imread(path)  # type: ignore[reportPossiblyUnboundVariable]
+                if img is not None:
+                    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)  # type: ignore[reportPossiblyUnboundVariable]
+                    _, thresh = cv2.threshold(gray, 240, 255, cv2.THRESH_BINARY_INV)  # type: ignore[reportPossiblyUnboundVariable]
+                    coords = cv2.findNonZero(thresh)  # type: ignore[reportPossiblyUnboundVariable]
+                    if coords is not None:
+                        x, y, w, h = cv2.boundingRect(coords)  # type: ignore[reportPossiblyUnboundVariable]
+                        ih, iw = img.shape[:2]
+                        if x > 2 or y > 2 or (iw - x - w) > 2 or (ih - y - h) > 2:
+                            cv2.imwrite(path, img[y:y+h, x:x+w])  # type: ignore[reportPossiblyUnboundVariable]
+                            logger.info(f"[截图] 裁剪白边: ({x},{y}) {w}x{h}")
+            logger.info(f"[截图] 截取背景元素: {bg_sel} CSS宽度={css_w:.0f}px")
+            return path, css_w
+        except Exception:
+            continue
+    # Fallback: 全页截图后用区域裁剪
+    try:
+        crop_box = await _find_captcha_region_box(page)
+        if crop_box and CV2_AVAILABLE:
+            path = f"{IMAGES_DIR}/_cs_gap.png"
+            await page.screenshot(path=path, full_page=False, timeout=10000)
+            img = cv2.imread(path)  # type: ignore[reportPossiblyUnboundVariable]
+            if img is not None:
+                x1, y1, x2, y2 = crop_box
+                cv2.imwrite(path, img[y1:y2, x1:x2])  # type: ignore[reportPossiblyUnboundVariable]
+                css_w = float(x2 - x1)
+                return path, css_w
+    except Exception:
+        pass
+    return None

@@ -1,0 +1,20 @@
+{
+  "websiteUrl": "https://taobao.com",
+  "searchName": "金首饰",
+  "imageUrl": "",
+  "pageCount": 47,
+  "dwellMinMs": 1000,
+  "dwellMaxMs": 3000,
+  "humanScroll": true,
+  "crawlPageInfo": true,
+  "headless": false,
+  "timeout": 300000,
+  "keepBrowserOpen": false,
+  "profileDir": "/Users/admin/pic/profile",
+  "sessionCookiesPath": "/Users/admin/pic/session-cookies.json",
+  "mcpServerUrl": "http://127.0.0.1:9000/mcp",
+  "cdpEndpoint": "http://127.0.0.1:19222",
+  "mcpPython": "/opt/anaconda3/envs/yolo/bin/python",
+  "mcpClientScript": "/Users/admin/pic/test-console/mcp_client.py",
+  "cdpDebugPort": 9222
+}

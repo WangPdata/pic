@@ -1,0 +1,32 @@
+async def _find_captcha_region_box(page) -> Optional[Tuple[int, int, int, int]]:
+    """在页面上找到验证码区域矩形，用于裁剪全页截图。
+    按 CAPTCHA_CONTAINER 优先级遍历，首个尺寸合理的元素决定区域；
+    区域裁剪策略依据元素类型（背景图直接取框，滑块向上扩展纳入缺口）。"""
+    for sel in CAPTCHA_CONTAINER:
+        try:
+            el, _ = await _find_element_all_frames(page, sel)
+            if not el:
+                continue
+            bb = await el.bounding_box()
+            if not bb:
+                continue
+            w, h = bb['width'], bb['height']
+            kind = _captcha_selector_kind(sel)
+            # 各类型最小尺寸门槛，过滤误匹配
+            min_w, min_h = {
+                'bg': (60, 30), 'puzzle': (60, 30), 'iframe': (100, 80),
+                'slider': (180, 20), 'dialog': (120, 60), 'container': (80, 40),
+            }.get(kind, (80, 30))
+            if w < min_w or h < min_h:
+                logger.info(f"[区域] {sel}({kind}) 尺寸过小 ({w:.0f}x{h:.0f}) < ({min_w}x{min_h})，跳过")
+                continue
+            # 左上角极小元素疑似导航栏
+            if bb['x'] < 10 and bb['y'] < 10 and h < 60 and kind not in ('iframe',):
+                continue
+            region = _captcha_region_from_box(bb, kind)
+            if region:
+                logger.info(f"[区域] {sel}({kind}) @ ({bb['x']:.0f},{bb['y']:.0f}) {w:.0f}x{h:.0f} -> region {region}")
+                return region
+        except Exception:
+            continue
+    return None

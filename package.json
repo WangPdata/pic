@@ -10,6 +10,7 @@
     "doctor": "node run.mjs --help"
   },
   "dependencies": {
+    "exceljs": "^4.4.0",
     "playwright": "1.61.1"
   },
   "engines": {

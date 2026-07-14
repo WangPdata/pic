@@ -1,0 +1,70 @@
+@mcp.tool()
+async def search_captcha_elements() -> list[dict[str, Any]]:
+    """搜索页面中所有验证码相关元素，返回 CSS 选择器、位置、大小、类型。
+    使用统一的 CAPTCHA_CONTAINER + SCRATCH_SELECTORS 选择器集，跨所有 frame 检索。"""
+    page = _get_page()
+    selectors = CAPTCHA_CONTAINER + SCRATCH_SELECTORS
+    candidates = []
+    seen = set()
+    for fi, f in enumerate(page.frames):
+        for sel in selectors:
+            try:
+                els = f.locator(sel)
+                cnt = await els.count()
+                if cnt == 0:
+                    continue
+                for i in range(cnt):
+                    el = els.nth(i)
+                    try:
+                        visible = await el.is_visible(timeout=200)
+                        if not visible:
+                            continue
+                    except Exception:
+                        continue
+                    box = await el.bounding_box()
+                    if not box or box['width'] < 5:
+                        continue
+                    key = (f.url[:50], sel, round(box['x']), round(box['y']))
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    kind = _captcha_selector_kind(sel)
+                    info = {
+                        'selector': sel,
+                        'tag': 'iframe' if sel.startswith('iframe') else sel.split('.')[0].lstrip('#'),
+                        'element_type': kind,
+                        'x': round(box['x']), 'y': round(box['y']),
+                        'width': round(box['width']), 'height': round(box['height']),
+                        'frame_index': fi, 'frame_url': f.url[:80],
+                    }
+                    candidates.append(info)
+                    logger.info(f"  [frame:{fi}] {sel}({kind}) @ ({box['x']:.0f},{box['y']:.0f}) {box['width']:.0f}x{box['height']:.0f}")
+                    break
+            except Exception:
+                pass
+    # iframe 内容文字探测（跨域 iframe 读不到内部 DOM，但能读同源的）
+    if not candidates:
+        for fi, f in enumerate(page.frames):
+            for sel in ['iframe[src*="nc"]', 'iframe[id*="captcha"]', 'iframe[src*="captcha"]', 'iframe[src*="verify"]']:
+                try:
+                    el = f.locator(sel).first
+                    if await el.count() > 0:
+                        box = await el.bounding_box()
+                        if box:
+                            candidates.append({
+                                'selector': sel, 'tag': 'iframe', 'element_type': 'iframe',
+                                'x': round(box['x']), 'y': round(box['y']),
+                                'width': round(box['width']), 'height': round(box['height']),
+                                'frame_index': fi, 'frame_url': f.url[:80],
+                            })
+                            try:
+                                cf = el.content_frame()  # pyright: ignore[reportCallIssue]
+                                if cf:
+                                    txt = await cf.evaluate("document.body.innerText")
+                                    logger.info(f"    iframe内文字: {txt[:200]}")
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+    logger.info(f"[搜索] 找到 {len(candidates)} 个验证码相关元素")
+    return candidates
